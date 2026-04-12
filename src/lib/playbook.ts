@@ -2,12 +2,16 @@ import { makeId } from "./id";
 import type {
   FieldTheme,
   FieldLayout,
+  PlayDisplaySettings,
   PlayDocument,
   PlayerCount,
   PlayerToken,
   Point,
   PrintSettings,
   RoutePath,
+  PlaySet,
+  PlaySetSettings,
+  StoredPlayPayload,
 } from "./types";
 
 export const BOARD_LAYOUT: FieldLayout = {
@@ -18,15 +22,7 @@ export const BOARD_LAYOUT: FieldLayout = {
   yardsInFront: 48,
 };
 
-const LEGACY_BOARD_LAYOUT: FieldLayout = {
-  width: 100,
-  height: 140,
-  lineOfScrimmageY: 92,
-  yardsBehindLine: 48,
-  yardsInFront: 92,
-};
-
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_PLAY_SCHEMA_VERSION = 1;
 
 export const FIELD_THEMES: Record<
   FieldTheme,
@@ -94,6 +90,8 @@ export const PLAYER_COLORS = [
   "#f5d0fe",
 ];
 
+export const YARD_MARKER_OPTIONS = [0, 5, 10, 15];
+
 export const PRINT_PRESETS: Array<{
   id: string;
   label: string;
@@ -105,6 +103,37 @@ export const PRINT_PRESETS: Array<{
   { id: "wristband-standard", label: "Standard wristband 3.5 x 1.25 in", width: 3.5, height: 1.25, unit: "in" },
   { id: "metric-compact", label: "Compact 90 x 35 mm", width: 90, height: 35, unit: "mm" },
 ];
+
+export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
+  roster: {
+    playerCount: 7,
+  },
+  field: {
+    theme: "white",
+    backgroundColor: "#fff8ee",
+  },
+  print: {
+    presetId: PRINT_PRESETS[1].id,
+    width: PRINT_PRESETS[1].width,
+    height: PRINT_PRESETS[1].height,
+    unit: PRINT_PRESETS[1].unit,
+  },
+  layout: {
+    playsPerPage: 4,
+    cardAspectRatio: Number((PRINT_PRESETS[1].width / PRINT_PRESETS[1].height).toFixed(3)),
+  },
+  export: {
+    includePlayNumber: true,
+    includePlayName: true,
+  },
+};
+
+export const DEFAULT_PLAY_DISPLAY_SETTINGS: PlayDisplaySettings = {
+  yardMarkers: [...YARD_MARKER_OPTIONS],
+  annotations: {
+    showLineOfScrimmageLabel: true,
+  },
+};
 
 const PLAYER_LAYOUTS: Record<PlayerCount, Array<Omit<PlayerToken, "id">>> = {
   5: [
@@ -135,61 +164,6 @@ const PLAYER_LAYOUTS: Record<PlayerCount, Array<Omit<PlayerToken, "id">>> = {
   ],
 };
 
-const DEFAULT_PRINT_SETTINGS: PrintSettings = {
-  presetId: PRINT_PRESETS[1].id,
-  width: PRINT_PRESETS[1].width,
-  height: PRINT_PRESETS[1].height,
-  unit: PRINT_PRESETS[1].unit,
-};
-
-export function createPlayers(playerCount: PlayerCount): PlayerToken[] {
-  return PLAYER_LAYOUTS[playerCount].map((player) => ({
-    ...player,
-    id: makeId("player"),
-  }));
-}
-
-export function createPlayDocument(playerCount: PlayerCount = 7): PlayDocument {
-  return {
-    id: makeId("play"),
-    name: `${playerCount}-player concept`,
-    playerCount,
-    fieldLayout: BOARD_LAYOUT,
-    fieldTheme: "white",
-    players: createPlayers(playerCount),
-    paths: [],
-    handoffs: [],
-    notes: "",
-    printSettings: DEFAULT_PRINT_SETTINGS,
-    updatedAt: new Date().toISOString(),
-    schemaVersion: CURRENT_SCHEMA_VERSION,
-  };
-}
-
-export function clonePlayDocument(play: PlayDocument): PlayDocument {
-  return {
-    ...play,
-    id: makeId("play"),
-    name: `${play.name} copy`,
-    fieldTheme: play.fieldTheme ?? "white",
-    players: play.players.map((player) => ({ ...player, id: makeId("player") })),
-    paths: [],
-    handoffs: [],
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-export function remapFormation(play: PlayDocument, playerCount: PlayerCount): PlayDocument {
-  return {
-    ...play,
-    playerCount,
-    players: createPlayers(playerCount),
-    paths: [],
-    handoffs: [],
-    updatedAt: new Date().toISOString(),
-  };
-}
-
 export function clampPoint(point: Point, layout = BOARD_LAYOUT): Point {
   return {
     x: Math.min(layout.width - 4, Math.max(4, point.x)),
@@ -201,86 +175,148 @@ export function buildPolylinePoints(anchor: Point, path: RoutePath): Point[] {
   return [anchor, ...path.points];
 }
 
-export function flipPointAcrossLine(point: Point, layout = BOARD_LAYOUT): Point {
-  return clampPoint(
-    {
-      x: point.x,
-      y: layout.lineOfScrimmageY * 2 - point.y,
-    },
-    layout,
-  );
+export function createPlayers(playerCount: PlayerCount): PlayerToken[] {
+  return PLAYER_LAYOUTS[playerCount].map((player) => ({
+    ...player,
+    id: makeId("player"),
+  }));
 }
 
-export function remapPointToLayout(point: Point, fromLayout: FieldLayout, toLayout = BOARD_LAYOUT): Point {
-  const x = (point.x / fromLayout.width) * toLayout.width;
+export function normalizePlaySetSettings(input?: Partial<PlaySetSettings> | null): PlaySetSettings {
+  const print = {
+    ...DEFAULT_PLAY_SET_SETTINGS.print,
+    ...(input?.print ?? {}),
+  };
 
-  if (point.y <= fromLayout.lineOfScrimmageY) {
-    const distanceInFront = fromLayout.lineOfScrimmageY - point.y;
-    const ratio = fromLayout.yardsInFront === 0 ? 0 : distanceInFront / fromLayout.yardsInFront;
-    return clampPoint(
-      {
-        x,
-        y: toLayout.lineOfScrimmageY - ratio * toLayout.yardsInFront,
-      },
-      toLayout,
-    );
-  }
+  const layout = {
+    ...DEFAULT_PLAY_SET_SETTINGS.layout,
+    ...(input?.layout ?? {}),
+  };
 
-  const distanceBehind = point.y - fromLayout.lineOfScrimmageY;
-  const ratio = fromLayout.yardsBehindLine === 0 ? 0 : distanceBehind / fromLayout.yardsBehindLine;
-  return clampPoint(
-    {
-      x,
-      y: toLayout.lineOfScrimmageY + ratio * toLayout.yardsBehindLine,
+  const resolvedRatio =
+    Number.isFinite(layout.cardAspectRatio) && layout.cardAspectRatio > 0
+      ? layout.cardAspectRatio
+      : print.width / print.height;
+  const resolvedHeight =
+    Number.isFinite(print.height) && print.height > 0 ? print.height : Number((print.width / resolvedRatio).toFixed(2));
+
+  return {
+    roster: {
+      ...DEFAULT_PLAY_SET_SETTINGS.roster,
+      ...(input?.roster ?? {}),
     },
-    toLayout,
-  );
+    field: {
+      ...DEFAULT_PLAY_SET_SETTINGS.field,
+      ...(input?.field ?? {}),
+    },
+    print: {
+      ...print,
+      height: resolvedHeight,
+    },
+    layout: {
+      playsPerPage: Math.min(6, Math.max(1, Math.round(layout.playsPerPage))),
+      cardAspectRatio: Number(resolvedRatio.toFixed(3)),
+    },
+    export: {
+      ...DEFAULT_PLAY_SET_SETTINGS.export,
+      ...(input?.export ?? {}),
+    },
+  };
 }
 
-export function migratePlayDocument(play: PlayDocument): PlayDocument {
-  if ((play.schemaVersion ?? 1) >= CURRENT_SCHEMA_VERSION) {
-    return {
-      ...play,
-      fieldLayout: BOARD_LAYOUT,
-      fieldTheme: play.fieldTheme ?? "white",
-      schemaVersion: CURRENT_SCHEMA_VERSION,
-    };
-  }
+export function normalizePlayDisplaySettings(
+  input?: Partial<PlayDisplaySettings> | null,
+): PlayDisplaySettings {
+  const markers = (input?.yardMarkers ?? DEFAULT_PLAY_DISPLAY_SETTINGS.yardMarkers)
+    .filter((value) => YARD_MARKER_OPTIONS.includes(value))
+    .sort((a, b) => a - b);
 
-  const layout = play.fieldLayout ?? LEGACY_BOARD_LAYOUT;
+  return {
+    yardMarkers: markers.length > 0 ? markers : [...DEFAULT_PLAY_DISPLAY_SETTINGS.yardMarkers],
+    annotations: {
+      ...DEFAULT_PLAY_DISPLAY_SETTINGS.annotations,
+      ...(input?.annotations ?? {}),
+    },
+  };
+}
 
-  if ((play.schemaVersion ?? 1) >= 2) {
+export function createPlaySet(name = "New Play Set"): PlaySet {
+  const now = new Date().toISOString();
+
+  return {
+    id: makeId("play-set"),
+    name,
+    settings: normalizePlaySetSettings(),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+interface CreatePlayDocumentOptions {
+  playSetId: string;
+  playNumber: number;
+  settings: PlaySetSettings;
+  name?: string;
+}
+
+export function createPlayDocument({
+  playSetId,
+  playNumber,
+  settings,
+  name,
+}: CreatePlayDocumentOptions): PlayDocument {
+  return {
+    id: makeId("play"),
+    playSetId,
+    name: name ?? `Play ${playNumber}`,
+    notes: "",
+    playNumber,
+    fieldLayout: BOARD_LAYOUT,
+    players: createPlayers(settings.roster.playerCount),
+    paths: [],
+    handoffs: [],
+    displaySettings: normalizePlayDisplaySettings(),
+    updatedAt: new Date().toISOString(),
+    schemaVersion: CURRENT_PLAY_SCHEMA_VERSION,
+  };
+}
+
+interface ClonePlayOptions {
+  playSetId: string;
+  playNumber: number;
+  name?: string;
+}
+
+export function clonePlayDocument(play: PlayDocument, options: ClonePlayOptions): PlayDocument {
+  const playerIdMap = new Map<string, string>();
+  const clonedPlayers = play.players.map((player) => {
+    const nextId = makeId("player");
+    playerIdMap.set(player.id, nextId);
     return {
-      ...play,
-      fieldLayout: BOARD_LAYOUT,
-      fieldTheme: play.fieldTheme ?? "white",
-      schemaVersion: CURRENT_SCHEMA_VERSION,
-      players: play.players.map((player) => ({
-        ...player,
-        ...remapPointToLayout(player, layout, BOARD_LAYOUT),
-      })),
-      paths: play.paths.map((path) => ({
-        ...path,
-        points: path.points.map((point) => remapPointToLayout(point, layout, BOARD_LAYOUT)),
-      })),
+      ...player,
+      id: nextId,
     };
-  }
+  });
 
   return {
     ...play,
-    fieldLayout: BOARD_LAYOUT,
-    fieldTheme: "white",
-    players: play.players.map((player) => ({
-      ...player,
-      ...remapPointToLayout(flipPointAcrossLine(player, layout), layout, BOARD_LAYOUT),
-    })),
+    id: makeId("play"),
+    playSetId: options.playSetId,
+    playNumber: options.playNumber,
+    name: options.name ?? `${play.name} copy`,
+    players: clonedPlayers,
     paths: play.paths.map((path) => ({
       ...path,
-      points: path.points.map((point) =>
-        remapPointToLayout(flipPointAcrossLine(point, layout), layout, BOARD_LAYOUT),
-      ),
+      id: makeId("path"),
+      playerId: playerIdMap.get(path.playerId) ?? path.playerId,
     })),
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    handoffs: play.handoffs.map((handoff) => ({
+      ...handoff,
+      id: makeId("handoff"),
+      fromPlayerId: playerIdMap.get(handoff.fromPlayerId) ?? handoff.fromPlayerId,
+      toPlayerId: playerIdMap.get(handoff.toPlayerId) ?? handoff.toPlayerId,
+    })),
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -288,5 +324,61 @@ export function touchPlay(play: PlayDocument): PlayDocument {
   return {
     ...play,
     updatedAt: new Date().toISOString(),
+  };
+}
+
+export function touchPlaySet(playSet: PlaySet): PlaySet {
+  return {
+    ...playSet,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function renumberPlays(plays: PlayDocument[]): PlayDocument[] {
+  return plays.map((play, index) =>
+    touchPlay({
+      ...play,
+      playNumber: index + 1,
+    }),
+  );
+}
+
+export function remapFormation(play: PlayDocument, playerCount: PlayerCount): PlayDocument {
+  return touchPlay({
+    ...play,
+    players: createPlayers(playerCount),
+    paths: [],
+    handoffs: [],
+  });
+}
+
+export function applyPlaySetSettingsToPlay(play: PlayDocument, settings: PlaySetSettings): PlayDocument {
+  const currentCount = play.players.length as PlayerCount;
+  if (currentCount === settings.roster.playerCount) {
+    return play;
+  }
+
+  return remapFormation(play, settings.roster.playerCount);
+}
+
+export function normalizeStoredPlayPayload(input?: StoredPlayPayload | null): StoredPlayPayload {
+  return {
+    fieldLayout: input?.fieldLayout ?? BOARD_LAYOUT,
+    players: input?.players ?? [],
+    paths: input?.paths ?? [],
+    handoffs: input?.handoffs ?? [],
+    displaySettings: normalizePlayDisplaySettings(input?.displaySettings),
+    schemaVersion: input?.schemaVersion ?? CURRENT_PLAY_SCHEMA_VERSION,
+  };
+}
+
+export function toStoredPlayPayload(play: PlayDocument): StoredPlayPayload {
+  return {
+    fieldLayout: play.fieldLayout,
+    players: play.players,
+    paths: play.paths,
+    handoffs: play.handoffs,
+    displaySettings: play.displaySettings,
+    schemaVersion: play.schemaVersion,
   };
 }

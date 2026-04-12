@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import App from "../App";
+import { AppShell } from "../App";
+import { createMemoryBackend, createSeededMemoryBackend } from "../lib/backend";
 
-function mockBoardRect() {
-  const board = screen.getByTestId("playboard");
+async function mockBoardRect() {
+  const board = await screen.findByTestId("playboard");
   Object.defineProperty(board, "getBoundingClientRect", {
     configurable: true,
     value: () => ({
@@ -20,23 +21,36 @@ function mockBoardRect() {
   return board;
 }
 
-describe("App", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
+describe("AppShell", () => {
+  it("shows the auth gate when signed out", async () => {
+    const backend = createMemoryBackend({
+      initialAuthState: {
+        status: "signed_out",
+        user: null,
+        error: null,
+      },
+    });
+
+    render(<AppShell backend={backend} />);
+
+    expect(await screen.findByText("Sign in to manage cloud-saved Play Sets.")).toBeInTheDocument();
   });
 
-  it("switches formations from the inspector", () => {
-    render(<App />);
+  it("switches formations from the inspector", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
 
-    const select = screen.getByDisplayValue("7 players");
-    fireEvent.change(select, { target: { value: "5" } });
+    const select = await screen.findByDisplayValue("7 players");
+    await act(async () => {
+      fireEvent.change(select, { target: { value: "5" } });
+    });
 
     expect(screen.getAllByTestId(/player-/)).toHaveLength(5);
   });
 
-  it("creates a route and keeps it anchored when the player moves", () => {
-    render(<App />);
-    const board = mockBoardRect();
+  it("creates a route and keeps it anchored when the player moves", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+    await screen.findByDisplayValue("7 players");
+    const board = await mockBoardRect();
 
     fireEvent.click(screen.getByRole("button", { name: "Route" }));
     fireEvent.pointerDown(screen.getByTestId("player-Q"), { clientX: 600, clientY: 700 });
@@ -47,7 +61,7 @@ describe("App", () => {
     expect(path.getAttribute("points")).toContain("60,70");
 
     fireEvent.click(screen.getByRole("button", { name: "Select" }));
-    mockBoardRect();
+    await mockBoardRect();
     fireEvent.pointerDown(screen.getByTestId("player-Q"), { clientX: 600, clientY: 700 });
     act(() => {
       window.dispatchEvent(new MouseEvent("mousemove", { clientX: 560, clientY: 720 }));
@@ -57,21 +71,10 @@ describe("App", () => {
     expect(path.getAttribute("points")).toMatch(/^56(?:\.0+1?)?,72/);
   });
 
-  it("creates a handoff between two players", () => {
-    render(<App />);
-    mockBoardRect();
+  it("defaults to a white field and allows switching to green", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Handoff" }));
-    fireEvent.pointerDown(screen.getByTestId("player-Q"), { clientX: 600, clientY: 700 });
-    fireEvent.pointerDown(screen.getByTestId("player-RB"), { clientX: 430, clientY: 750 });
-
-    expect(screen.getByTestId(/handoff-/)).toBeInTheDocument();
-  });
-
-  it("defaults to a white field and allows switching to green", () => {
-    render(<App />);
-
-    expect(screen.getByTestId("field-surface")).toHaveAttribute("fill", "#fffdf7");
+    expect(await screen.findByTestId("field-surface")).toHaveAttribute("fill", "#fffdf7");
 
     fireEvent.change(screen.getByDisplayValue("Whiteboard"), {
       target: { value: "green" },

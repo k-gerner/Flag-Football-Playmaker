@@ -1,11 +1,12 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { clientToBoardPoint } from "../lib/geometry";
-import { BOARD_LAYOUT, FIELD_THEMES, buildPolylinePoints, clampPoint } from "../lib/playbook";
-import type { DraftPath, PlayDocument, Point, ToolMode } from "../lib/types";
+import { FIELD_THEMES, buildPolylinePoints, clampPoint } from "../lib/playbook";
+import type { DraftPath, PlayDocument, PlaySetSettings, Point, ToolMode } from "../lib/types";
 
 interface PlayboardProps {
   play: PlayDocument;
+  playSetSettings: PlaySetSettings;
   tool: ToolMode;
   selectedPlayerId: string | null;
   selectedPathId: string | null;
@@ -30,7 +31,6 @@ type DragState =
 
 const markerId = "play-arrow";
 const motionMarkerId = "motion-arrow";
-const YARD_MARKERS = [0, 5, 10, 15];
 
 function getMidpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -39,6 +39,7 @@ function getMidpoint(a: Point, b: Point): Point {
 export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Playboard(
   {
     play,
+    playSetSettings,
     tool,
     selectedPlayerId,
     selectedPathId,
@@ -59,7 +60,8 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
 ) {
   const localRef = useRef<SVGSVGElement | null>(null);
   const [dragState, setDragState] = useState<DragState>(null);
-  const theme = FIELD_THEMES[play.fieldTheme];
+  const theme = FIELD_THEMES[playSetSettings.field.theme];
+  const layout = play.fieldLayout;
 
   useEffect(() => {
     if (!interactive || !dragState) {
@@ -72,7 +74,13 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
       }
 
       const point = clampPoint(
-        clientToBoardPoint(event.clientX, event.clientY, localRef.current.getBoundingClientRect()),
+        clientToBoardPoint(
+          event.clientX,
+          event.clientY,
+          localRef.current.getBoundingClientRect(),
+          layout,
+        ),
+        layout,
       );
 
       if (dragState.kind === "player") {
@@ -101,7 +109,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("mouseup", handlePointerUp);
     };
-  }, [dragState, interactive, onPathPointMove, onPlayerMove]);
+  }, [dragState, interactive, layout, onPathPointMove, onPlayerMove]);
 
   const handleBoardClick = (event: ReactMouseEvent<SVGSVGElement>) => {
     if (!interactive || !localRef.current) {
@@ -115,7 +123,10 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
 
     if ((tool === "route" || tool === "motion") && draftPath) {
       onBoardPress?.(
-        clampPoint(clientToBoardPoint(event.clientX, event.clientY, localRef.current.getBoundingClientRect())),
+        clampPoint(
+          clientToBoardPoint(event.clientX, event.clientY, localRef.current.getBoundingClientRect(), layout),
+          layout,
+        ),
       );
       return;
     }
@@ -139,8 +150,9 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
   return (
     <div
       className="relative overflow-hidden rounded-[36px] border border-white/20 shadow-panel"
-      style={{ background: theme.cardBackground }}
+      style={{ backgroundColor: playSetSettings.field.backgroundColor }}
     >
+      <div className="absolute inset-0 opacity-30" style={{ background: theme.cardBackground }} />
       <div className="absolute inset-x-0 top-0 h-28" style={{ background: theme.overlay }} />
       <svg
         aria-label={accessibleLabel ?? undefined}
@@ -157,8 +169,8 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
             ref.current = node;
           }
         }}
-        style={{ aspectRatio: `${BOARD_LAYOUT.width} / ${BOARD_LAYOUT.height}` }}
-        viewBox={`0 0 ${BOARD_LAYOUT.width} ${BOARD_LAYOUT.height}`}
+        style={{ aspectRatio: `${layout.width} / ${layout.height}` }}
+        viewBox={`0 0 ${layout.width} ${layout.height}`}
       >
         <defs>
           <marker id={markerId} markerHeight="6" markerWidth="6" orient="auto-start-reverse" refX="5" refY="3">
@@ -172,13 +184,14 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
         <rect
           data-testid={enableTestIds ? "field-surface" : undefined}
           fill={theme.surface}
-          height={BOARD_LAYOUT.height}
-          width={BOARD_LAYOUT.width}
+          height={layout.height}
+          width={layout.width}
           x="0"
           y="0"
         />
-        {YARD_MARKERS.map((yards) => {
-          const y = BOARD_LAYOUT.lineOfScrimmageY - (yards / 15) * BOARD_LAYOUT.yardsInFront;
+
+        {play.displaySettings.yardMarkers.map((yards) => {
+          const y = layout.lineOfScrimmageY - (yards / 15) * layout.yardsInFront;
           const isScrimmage = yards === 0;
           return (
             <g key={yards}>
@@ -188,7 +201,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                 strokeDasharray={isScrimmage ? undefined : "1.4 3"}
                 strokeWidth={isScrimmage ? 1.2 : 0.35}
                 x1="10"
-                x2={BOARD_LAYOUT.width - 5}
+                x2={layout.width - 5}
                 y1={y}
                 y2={y}
               />
@@ -205,6 +218,19 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
             </g>
           );
         })}
+
+        {play.displaySettings.annotations.showLineOfScrimmageLabel ? (
+          <text
+            fill={theme.scrimmage}
+            fontSize="3"
+            fontWeight="700"
+            textAnchor="end"
+            x={layout.width - 6}
+            y={layout.lineOfScrimmageY - 2}
+          >
+            LOS
+          </text>
+        ) : null}
 
         {play.handoffs.map((handoff) => {
           const from = play.players.find((player) => player.id === handoff.fromPlayerId);
@@ -226,7 +252,14 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                 y1={from.y}
                 y2={to.y}
               />
-              <circle cx={midpoint.x} cy={midpoint.y} fill={theme.handoffFill} r="3.4" stroke={theme.handoff} strokeWidth="0.6" />
+              <circle
+                cx={midpoint.x}
+                cy={midpoint.y}
+                fill={theme.handoffFill}
+                r="3.4"
+                stroke={theme.handoff}
+                strokeWidth="0.6"
+              />
               <text fill={theme.handoff} fontSize="2.8" fontWeight="700" textAnchor="middle" x={midpoint.x} y={midpoint.y + 1}>
                 H
               </text>
@@ -266,22 +299,22 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
               />
               {selected && interactive && tool === "select"
                 ? path.points.map((point, pointIndex) => (
-                  <circle
-                    cx={point.x}
-                    cy={point.y}
-                    data-stop-board-click="true"
-                    fill={theme.handleFill}
-                    key={`${path.id}-${pointIndex}`}
-                    onPointerDown={(event: ReactPointerEvent<SVGCircleElement>) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setDragState({ kind: "point", pathId: path.id, pointIndex });
-                    }}
-                    r="1.8"
-                    stroke={theme.handleStroke}
-                    strokeWidth="0.6"
-                  />
-                ))
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      data-stop-board-click="true"
+                      fill={theme.handleFill}
+                      key={`${path.id}-${pointIndex}`}
+                      onPointerDown={(event: ReactPointerEvent<SVGCircleElement>) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setDragState({ kind: "point", pathId: path.id, pointIndex });
+                      }}
+                      r="1.8"
+                      stroke={theme.handleStroke}
+                      strokeWidth="0.6"
+                    />
+                  ))
                 : null}
             </g>
           );
@@ -336,7 +369,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                 cy={player.y}
                 fill={player.color}
                 r="4.2"
-                stroke={handoffSource ? "#fff4d6" : selected ? "#10231a" : "rgba(15, 23, 32, 0.55)"}
+                stroke={handoffSource ? theme.scrimmage : selected ? "#10231a" : "rgba(15, 23, 32, 0.55)"}
                 strokeWidth={handoffSource ? 1.4 : selected ? 1.1 : 0.7}
               />
               <text fill="#10231a" fontSize="2.9" fontWeight="700" textAnchor="middle" x={player.x} y={player.y + 1}>
@@ -349,3 +382,4 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
     </div>
   );
 });
+

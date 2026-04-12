@@ -1,15 +1,23 @@
 # Flag Football Playmaker
 
-Flag Football Playmaker is a frontend-only web app for designing offensive flag football plays.
+Flag Football Playmaker is a React app for designing offensive flag football plays, grouping them into cloud-saved Play Sets, and exporting whole wristband installs as PDFs.
 
-It lets you:
-- Choose 5, 7, or 8 offensive players
-- Drag players around a playboard
-- Draw routes and motion paths
-- Add handoff markers
-- Rename players and change marker colors
-- Save multiple plays locally in your browser
-- Export a single play to a wristband-sized PDF with exact dimensions
+## What It Does
+
+- Organize plays into Play Sets like `Team A`, `Team B`, or install packages
+- Sign in with email/password using Supabase Auth
+- Save Play Sets and plays in Supabase Postgres
+- Choose shared Play Set settings such as:
+  - player count
+  - field theme
+  - card background color
+  - plays per page
+  - card aspect ratio
+  - print dimensions
+- Edit play-specific settings such as visible yard markers
+- Drag offensive players around the board
+- Draw routes, motion, and handoffs
+- Export either the active play or the whole Play Set to PDF
 
 ## Tech Stack
 
@@ -17,20 +25,46 @@ It lets you:
 - TypeScript
 - Tailwind CSS
 - Vite
-- jsPDF + svg2pdf.js for PDF export
+- Supabase Auth + Postgres
+- jsPDF + svg2pdf.js
 
-## Getting Started
+## Setup
 
 ### Requirements
 
-- Node.js 22+
+- Node.js 20+ or 22+
 - npm 10+
+- A Supabase project
 
-### Install
+### Install dependencies
 
 ```bash
 npm install
 ```
+
+### Configure Supabase
+
+Copy the example env file and fill in your project values:
+
+```bash
+cp .env.example .env
+```
+
+Required values:
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### Create the database tables
+
+Run the SQL in [supabase/schema.sql](/Users/kgerner/Documents/Personal%20Projects/Flag-Football-Playmaker/supabase/schema.sql) inside the Supabase SQL editor.
+
+That creates:
+- `play_sets`
+- `plays`
+- row-level security policies so users only access their own data
 
 ### Run the app
 
@@ -38,7 +72,7 @@ npm install
 npm run dev
 ```
 
-Then open the local Vite URL shown in your terminal.
+Then open the local Vite URL shown in the terminal.
 
 ### Run tests
 
@@ -54,175 +88,105 @@ npm run build
 
 ## How to Use
 
-### 1. Create or open a play
+### 1. Sign in
 
-Use the left sidebar to manage your play library.
+Use the email/password screen to create an account or sign in.
 
-- `New play` creates a new play
-- Click a saved play to open it
-- `Duplicate` makes a copy of a play
-- `Delete` removes a play from this browser
+### 2. Create a Play Set
 
-Plays are saved automatically in `localStorage`, so they stay available after refresh on the same browser/profile.
+Use `New set` in the left rail.
 
-### 2. Choose the offensive player count
+Each Play Set owns the shared settings for that group of plays:
+- player count
+- field style
+- card background color
+- print size
+- plays per page
+- card aspect ratio
 
-In the right panel under `Offensive personnel`, choose:
-- `5 players`
-- `7 players`
-- `8 players`
+### 3. Create plays inside the set
 
-This resets the formation to a default layout for that player count and clears existing paths/handoffs for that play.
+Use `New play` inside the active Play Set.
 
-### 3. Move players
+Each play gets:
+- its own drawing data
+- its own notes
+- its own yard-marker visibility settings
+- a `play_number` inside the set
 
-Use the `Select` tool in the top toolbar.
+You can:
+- duplicate a play
+- move it up or down in the set
+- delete it
+- copy it into another Play Set
 
-- Click a player to select it
-- Drag the player to reposition it on the board
-- If that player already has a route or motion path, the start of the path stays anchored to the player
+### 4. Edit the playboard
 
-### 4. Edit player details
+Use the top toolbar:
+- `Select` to move players and path control points
+- `Route` to draw solid routes
+- `Motion` to draw dashed motion paths
+- `Handoff` to connect two players
 
-When a player is selected, the right panel lets you change:
-- `Player label`
-- `Player color`
+When a player is selected, you can change:
+- label
+- color
 
-This is useful for changing labels to things like `Q`, `RB`, `X`, `Y`, `Z`, `C`, `H`, or custom short tags.
+### 5. Tune Play Set export settings
 
-### 5. Draw a route
+In the inspector, use:
+- `Plays per page`
+- `Card aspect ratio`
+- `Preset size`
+- custom width/height/unit
 
-Use the `Route` tool.
+These settings apply to the whole Play Set export.
 
-1. Click the player who owns the route
-2. Click one or more points on the field to build the route
-3. Click `Finish path` to save it
-4. Click `Cancel` if you want to discard the draft
+### 6. Tune play-specific display settings
 
-Notes:
-- Routes are drawn as solid lines with an arrow
-- Each player supports one saved route/motion path in this version
-- Creating a new path for the same player replaces the previous one
+For the active play, you can choose:
+- which yard markers are visible
+- whether the line-of-scrimmage label is shown
 
-### 6. Draw motion
+### 7. Export PDFs
 
-Use the `Motion` tool.
+- `Export Set PDF` exports the whole Play Set in `play_number` order
+- `Export Play` exports only the active play
 
-The flow is the same as route drawing:
-1. Click the player
-2. Click points on the board
-3. Click `Finish path`
+## Data Model
 
-Motion paths are shown as dashed lines.
+The app stores:
 
-### 7. Add a handoff
+- Play Set metadata and shared settings in `play_sets.settings_json`
+- Play drawing payloads in `plays.play_data_json`
 
-Use the `Handoff` tool.
-
-1. Click the player giving the ball
-2. Click the player receiving the ball
-
-A handoff marker will be added between the two players.
-
-### 8. Edit or remove an existing path
-
-Switch back to `Select`.
-
-- Click a path to select it
-- Drag its control points to reshape it
-- Use `Delete path` in the right panel to remove it
-
-### 9. Rename the play and add notes
-
-In the right panel under `Play Setup`, you can edit:
-- `Play name`
-- `Coach notes`
-
-Notes are saved with the play and shown in the play library.
-
-### 10. Set print size and export to PDF
-
-In the `Print & PDF` section on the right:
-
-- Choose a preset wristband size, or
-- Enter a custom `Width`, `Height`, and `Unit`
-
-Available units:
-- Inches
-- Millimeters
-
-Use the live preview card to sanity-check the aspect ratio.
-
-When ready, click `Export PDF`.
-
-The exported PDF is generated from the same SVG used by the editor so the printed layout stays crisp.
-
-## Playboard Notes
-
-The playboard is offense-focused and includes:
-- A visible line of scrimmage
-- Space behind the line for shotgun alignment or RB motion
-- More space in front of the line for deeper routes
-- Yard-style guide lines for alignment
-
-## Current Scope
-
-This version is intentionally local and simple.
-
-Included:
-- Offensive players only
-- Single-play editing
-- Local browser persistence
-- Single-play PDF export
-
-Not included yet:
-- User accounts
-- Cloud sync
-- Shared playbooks across devices
-- Defensive players
-- Multi-play printable sheets
-- Mobile-first editing
+That JSON-backed structure is intentional so new configurable settings can be added later without redesigning the database.
 
 ## Project Structure
 
-- `src/App.tsx`: top-level app state and editor coordination
-- `src/components/`: UI panels and playboard
-- `src/lib/types.ts`: play document types
-- `src/lib/playbook.ts`: default formations and print presets
-- `src/lib/storage.ts`: browser persistence
-- `src/lib/pdf.ts`: PDF export
-- `src/test/`: Vitest coverage for storage, geometry, and editor flows
+- `src/App.tsx`: auth-aware app shell and workspace state
+- `src/components/`: auth, library, inspector, toolbar, playboard
+- `src/lib/types.ts`: public frontend types
+- `src/lib/playbook.ts`: defaults, settings normalization, play creation helpers
+- `src/lib/backend.ts`: Supabase adapter plus in-memory test backend
+- `src/lib/pdf.ts`: single-play and whole-set PDF export
+- `supabase/schema.sql`: Postgres schema and RLS policies
 
 ## Troubleshooting
 
 ### `npm run dev` or `npm run build` gets killed
 
-This project now starts Vite and TypeScript with a larger Node heap by default. If you were seeing `zsh: killed npm run dev` or `Killed: 9 tsc -b`, pull the latest changes and retry.
+This project starts Vite and TypeScript with a larger Node heap by default. If you still see a `killed` process, check your Node version with `node -v`. Node `20.x` LTS is a safe fallback if your local `22.x` install is unstable.
 
-If it still happens, check your Node version with `node -v`. Node `20.x` LTS is a safe fallback if your local `22.x` install is unstable.
+### The app only shows a Supabase setup screen
 
+Make sure:
+- `.env` exists
+- `VITE_SUPABASE_URL` is set
+- `VITE_SUPABASE_ANON_KEY` is set
+- you restarted the dev server after adding them
 
-### My plays disappeared
+### Sign in works, but no data loads
 
-Plays are stored in browser local storage. They can disappear if:
-- You clear site data/local storage
-- You switch browsers
-- You switch browser profiles
-- You use private/incognito mode
+Check that you ran [supabase/schema.sql](/Users/kgerner/Documents/Personal%20Projects/Flag-Football-Playmaker/supabase/schema.sql) and that your Supabase project has email/password auth enabled.
 
-### PDF export does nothing
-
-Make sure the browser allows downloads/popups for local files or local dev pages if it prompts.
-
-### I changed from 7 players to 5 players and lost my routes
-
-That is expected in the current version. Changing player count resets the formation and clears existing paths/handoffs for that play.
-
-## Future Ideas
-
-- Save/load play files manually
-- Multi-play wristband sheets
-- Defensive markers
-- Shared cloud playbooks
-- Tablet/touch optimization
-- Route templates

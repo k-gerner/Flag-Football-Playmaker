@@ -1,13 +1,14 @@
 import { BOARD_LAYOUT } from "./playbook";
-import type { Point, PrintSettings } from "./types";
+import type { FieldLayout, Point, PrintSettings } from "./types";
 
 export function clientToBoardPoint(
   clientX: number,
   clientY: number,
   rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
+  layout: FieldLayout = BOARD_LAYOUT,
 ): Point {
-  const x = ((clientX - rect.left) / rect.width) * BOARD_LAYOUT.width;
-  const y = ((clientY - rect.top) / rect.height) * BOARD_LAYOUT.height;
+  const x = ((clientX - rect.left) / rect.width) * layout.width;
+  const y = ((clientY - rect.top) / rect.height) * layout.height;
 
   return {
     x: Number.isFinite(x) ? x : 0,

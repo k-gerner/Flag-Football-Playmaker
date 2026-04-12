@@ -1,96 +1,564 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AuthPanel } from "./components/AuthPanel";
 import { InspectorPanel } from "./components/InspectorPanel";
 import { PlayLibrary } from "./components/PlayLibrary";
 import { Playboard } from "./components/Playboard";
 import { Toolbar } from "./components/Toolbar";
-import { exportPlayToPdf } from "./lib/pdf";
+import { createMemoryBackend, supabaseBackend, type AppBackend } from "./lib/backend";
+import { exportPlaySetToPdf, exportPlayToPdf } from "./lib/pdf";
 import { makeId } from "./lib/id";
-import { PRINT_PRESETS, clampPoint, clonePlayDocument, createPlayDocument, remapFormation, touchPlay } from "./lib/playbook";
-import { loadPlaybook, savePlaybook } from "./lib/storage";
-import type { DraftPath, HandoffMark, PlayDocument, PlayerCount, PlayerToken, Point, RoutePath, ToolMode } from "./lib/types";
+import {
+  PRINT_PRESETS,
+  applyPlaySetSettingsToPlay,
+  clonePlayDocument,
+  createPlayDocument,
+  createPlaySet,
+  normalizePlayDisplaySettings,
+  normalizePlaySetSettings,
+  remapFormation,
+  renumberPlays,
+  touchPlay,
+  touchPlaySet,
+} from "./lib/playbook";
+import type {
+  AuthSessionState,
+  DraftPath,
+  HandoffMark,
+  PlayDocument,
+  PlaySet,
+  PlayerCount,
+  PlayerToken,
+  Point,
+  RoutePath,
+  ToolMode,
+} from "./lib/types";
 
-function App() {
-  const [plays, setPlays] = useState<PlayDocument[]>(() => loadPlaybook());
-  const [activePlayId, setActivePlayId] = useState<string>(() => loadPlaybook()[0]?.id ?? createPlayDocument().id);
+interface AppShellProps {
+  backend: AppBackend;
+}
+
+function SetupPanel() {
+  return (
+    <div className="mx-auto flex min-h-screen max-w-3xl items-center px-5 py-8 lg:px-8">
+      <div className="glass-panel w-full rounded-[32px] border border-white/70 p-6 shadow-panel">
+        <p className="font-display text-sm font-bold uppercase tracking-[0.28em] text-ember-500">Supabase Setup</p>
+        <h1 className="mt-2 font-display text-4xl font-black tracking-tight text-ink-950">
+          Connect Supabase to enable Play Sets and saved accounts.
+        </h1>
+        <div className="mt-4 space-y-3 text-sm leading-6 text-ink-950/75">
+          <p>Add these environment variables before running the app:</p>
+          <pre className="overflow-x-auto rounded-3xl bg-ink-950 p-4 text-white">
+{`VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...`}
+          </pre>
+          <p>
+            After that, restart the dev server and the app will use Supabase Auth and Postgres for Play Sets,
+            grouped plays, and whole-set PDF exports.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+export function AppShell({ backend }: AppShellProps) {
+  const [authState, setAuthState] = useState<AuthSessionState>({
+    status: "loading",
+    user: null,
+    error: null,
+  });
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [playSets, setPlaySets] = useState<PlaySet[]>([]);
+  const [playsBySetId, setPlaysBySetId] = useState<Record<string, PlayDocument[]>>({});
+  const [activePlaySetId, setActivePlaySetId] = useState<string | null>(null);
+  const [activePlayId, setActivePlayId] = useState<string | null>(null);
+  const [copyTargetPlaySetId, setCopyTargetPlaySetId] = useState("");
   const [tool, setTool] = useState<ToolMode>("select");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
   const [draftPath, setDraftPath] = useState<DraftPath | null>(null);
   const [handoffSourceId, setHandoffSourceId] = useState<string | null>(null);
-  const exportSvgRef = useRef<SVGSVGElement | null>(null);
 
-  const activePlay = plays.find((play) => play.id === activePlayId) ?? plays[0];
+  const playSaveTimers = useRef<Record<string, number>>({});
+  const playSetSaveTimers = useRef<Record<string, number>>({});
+  const exportSvgRefs = useRef<Record<string, SVGSVGElement | null>>({});
+
+  const activePlaySet = playSets.find((playSet) => playSet.id === activePlaySetId) ?? null;
+  const activeSetPlays = activePlaySetId ? playsBySetId[activePlaySetId] ?? [] : [];
+  const activePlay = activeSetPlays.find((play) => play.id === activePlayId) ?? activeSetPlays[0] ?? null;
   const selectedPlayer = activePlay?.players.find((player) => player.id === selectedPlayerId) ?? null;
   const selectedPath = activePlay?.paths.find((path) => path.id === selectedPathId) ?? null;
 
-  useEffect(() => {
-    if (activePlay && activePlay.id !== activePlayId) {
-      setActivePlayId(activePlay.id);
-    }
-  }, [activePlay, activePlayId]);
+  const userId = authState.user?.id ?? null;
 
-  useEffect(() => {
-    savePlaybook(plays);
-  }, [plays]);
-
-  function resetTransientState() {
+  const clearTransientState = () => {
     setSelectedPlayerId(null);
     setSelectedPathId(null);
     setDraftPath(null);
     setHandoffSourceId(null);
+  };
+
+  const clearSaveTimers = () => {
+    Object.values(playSaveTimers.current).forEach((timerId) => window.clearTimeout(timerId));
+    Object.values(playSetSaveTimers.current).forEach((timerId) => window.clearTimeout(timerId));
+    playSaveTimers.current = {};
+    playSetSaveTimers.current = {};
+  };
+
+  async function loadWorkspace(nextUserId: string) {
+    setWorkspaceBusy(true);
+    setWorkspaceError(null);
+
+    try {
+      const nextPlaySets = await backend.listPlaySets(nextUserId);
+      const playEntries = await Promise.all(
+        nextPlaySets.map(async (playSet) => [playSet.id, await backend.listPlays(playSet.id)] as const),
+      );
+      const nextPlaysBySetId = Object.fromEntries(playEntries);
+
+      setPlaySets(nextPlaySets);
+      setPlaysBySetId(nextPlaysBySetId);
+      setActivePlaySetId((current) =>
+        current && nextPlaySets.some((playSet) => playSet.id === current) ? current : nextPlaySets[0]?.id ?? null,
+      );
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  function schedulePlaySave(play: PlayDocument) {
+    if (!userId) {
+      return;
+    }
+
+    const existingTimer = playSaveTimers.current[play.id];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+    }
+
+    playSaveTimers.current[play.id] = window.setTimeout(async () => {
+      try {
+        const saved = await backend.savePlay(play);
+        setPlaysBySetId((current) => ({
+          ...current,
+          [saved.playSetId]: (current[saved.playSetId] ?? [])
+            .map((item) => (item.id === saved.id ? saved : item))
+            .sort((a, b) => a.playNumber - b.playNumber),
+        }));
+      } catch (error) {
+        setWorkspaceError(getErrorMessage(error));
+      }
+    }, 450);
+  }
+
+  function schedulePlaySetSave(playSet: PlaySet) {
+    if (!userId) {
+      return;
+    }
+
+    const existingTimer = playSetSaveTimers.current[playSet.id];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+    }
+
+    playSetSaveTimers.current[playSet.id] = window.setTimeout(async () => {
+      try {
+        const saved = await backend.savePlaySet(userId, playSet);
+        setPlaySets((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+      } catch (error) {
+        setWorkspaceError(getErrorMessage(error));
+      }
+    }, 450);
+  }
+
+  async function persistPlaysImmediately(nextPlays: PlayDocument[]) {
+    if (!userId || nextPlays.length === 0) {
+      return;
+    }
+
+    nextPlays.forEach((play) => {
+      const timer = playSaveTimers.current[play.id];
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+      delete playSaveTimers.current[play.id];
+    });
+
+    try {
+      const saved = await backend.savePlays(nextPlays);
+      if (saved.length > 0) {
+        setPlaysBySetId((current) => ({
+          ...current,
+          [saved[0].playSetId]: saved,
+        }));
+      }
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    backend.getInitialAuthState().then((state) => {
+      if (active) {
+        setAuthState(state);
+      }
+    });
+
+    const unsubscribe = backend.subscribeToAuth((state) => {
+      setAuthState(state);
+    });
+
+    return () => {
+      active = false;
+      clearSaveTimers();
+      unsubscribe();
+    };
+  }, [backend]);
+
+  useEffect(() => {
+    if (authState.status !== "signed_in" || !userId) {
+      clearSaveTimers();
+      setPlaySets([]);
+      setPlaysBySetId({});
+      setActivePlaySetId(null);
+      setActivePlayId(null);
+      clearTransientState();
+      return;
+    }
+
+    void loadWorkspace(userId);
+  }, [authState.status, userId]);
+
+  useEffect(() => {
+    if (!activePlaySetId) {
+      setActivePlayId(null);
+      return;
+    }
+
+    const plays = playsBySetId[activePlaySetId] ?? [];
+    if (!plays.some((play) => play.id === activePlayId)) {
+      setActivePlayId(plays[0]?.id ?? null);
+      clearTransientState();
+    }
+  }, [activePlayId, activePlaySetId, playsBySetId]);
+
+  useEffect(() => {
+    if (!copyTargetPlaySetId || playSets.some((playSet) => playSet.id === copyTargetPlaySetId)) {
+      return;
+    }
+
+    setCopyTargetPlaySetId("");
+  }, [copyTargetPlaySetId, playSets]);
+
+  const setScopedPlaySets = useMemo(() => playSets, [playSets]);
+
+  async function handleAuthSubmit(mode: "sign_in" | "sign_up", email: string, password: string) {
+    setAuthBusy(true);
+    setAuthError(null);
+
+    try {
+      const nextState =
+        mode === "sign_in" ? await backend.signIn(email, password) : await backend.signUp(email, password);
+      setAuthState(nextState);
+      setAuthError(nextState.error);
+    } catch (error) {
+      setAuthError(getErrorMessage(error));
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   function updateActivePlay(updater: (play: PlayDocument) => PlayDocument) {
-    setPlays((current) =>
-      current.map((play) => {
-        if (play.id !== activePlayId) {
+    if (!activePlay || !activePlaySetId) {
+      return;
+    }
+
+    setPlaysBySetId((current) => {
+      const nextPlays = (current[activePlaySetId] ?? []).map((play) => {
+        if (play.id !== activePlay.id) {
           return play;
         }
 
-        return touchPlay(updater(play));
+        const updated = touchPlay(updater(play));
+        schedulePlaySave(updated);
+        return updated;
+      });
+
+      return {
+        ...current,
+        [activePlaySetId]: nextPlays,
+      };
+    });
+  }
+
+  function updateActivePlaySet(updater: (playSet: PlaySet) => PlaySet) {
+    if (!activePlaySet) {
+      return;
+    }
+
+    setPlaySets((current) =>
+      current.map((playSet) => {
+        if (playSet.id !== activePlaySet.id) {
+          return playSet;
+        }
+
+        const updated = touchPlaySet(updater(playSet));
+        schedulePlaySetSave(updated);
+        return updated;
       }),
     );
   }
 
-  function handleCreatePlay() {
-    const next = createPlayDocument(activePlay?.playerCount ?? 7);
-    setPlays((current) => [...current, next]);
-    setActivePlayId(next.id);
-    resetTransientState();
-  }
-
-  function handleDuplicatePlay(playId: string) {
-    const target = plays.find((play) => play.id === playId);
-    if (!target) {
+  function handlePlaySetSettingsCommit(nextSettings: PlaySet["settings"]) {
+    if (!activePlaySet) {
       return;
     }
 
-    const duplicate = clonePlayDocument(target);
-    setPlays((current) => [...current, duplicate]);
-    setActivePlayId(duplicate.id);
-    resetTransientState();
+    const normalizedSettings = normalizePlaySetSettings(nextSettings);
+    const nextPlaySet = touchPlaySet({
+      ...activePlaySet,
+      settings: normalizedSettings,
+    });
+
+    setPlaySets((current) => current.map((item) => (item.id === nextPlaySet.id ? nextPlaySet : item)));
+    schedulePlaySetSave(nextPlaySet);
   }
 
-  function handleDeletePlay(playId: string) {
-    const remaining = plays.filter((play) => play.id !== playId);
-    if (remaining.length === 0) {
-      const replacement = createPlayDocument();
-      setPlays([replacement]);
-      setActivePlayId(replacement.id);
-      resetTransientState();
+  async function handleCreatePlaySet() {
+    if (!userId) {
       return;
     }
 
-    setPlays(remaining);
-    if (activePlayId === playId) {
-      setActivePlayId(remaining[0].id);
-      resetTransientState();
+    const newPlaySet = createPlaySet(`Play Set ${playSets.length + 1}`);
+    const firstPlay = createPlayDocument({
+      playSetId: newPlaySet.id,
+      playNumber: 1,
+      settings: newPlaySet.settings,
+    });
+
+    try {
+      const savedPlaySet = await backend.savePlaySet(userId, newPlaySet);
+      const savedPlay = await backend.savePlay(firstPlay);
+
+      setPlaySets((current) => [savedPlaySet, ...current]);
+      setPlaysBySetId((current) => ({
+        ...current,
+        [savedPlaySet.id]: [savedPlay],
+      }));
+      setActivePlaySetId(savedPlaySet.id);
+      setActivePlayId(savedPlay.id);
+      clearTransientState();
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
     }
   }
 
-  function handleSelectPlay(playId: string) {
-    setActivePlayId(playId);
-    resetTransientState();
+  async function handleDuplicatePlaySet(playSetId: string) {
+    if (!userId) {
+      return;
+    }
+
+    const sourceSet = playSets.find((playSet) => playSet.id === playSetId);
+    if (!sourceSet) {
+      return;
+    }
+
+    const sourcePlays = playsBySetId[playSetId] ?? [];
+    const nextPlaySet = touchPlaySet({
+      ...createPlaySet(`${sourceSet.name} copy`),
+      settings: normalizePlaySetSettings(sourceSet.settings),
+    });
+    const clonedPlays = sourcePlays.map((play) =>
+      clonePlayDocument(play, {
+        playSetId: nextPlaySet.id,
+        playNumber: play.playNumber,
+      }),
+    );
+
+    try {
+      const savedPlaySet = await backend.savePlaySet(userId, nextPlaySet);
+      const savedPlays = await backend.savePlays(clonedPlays);
+      setPlaySets((current) => [savedPlaySet, ...current]);
+      setPlaysBySetId((current) => ({
+        ...current,
+        [savedPlaySet.id]: savedPlays,
+      }));
+      setActivePlaySetId(savedPlaySet.id);
+      setActivePlayId(savedPlays[0]?.id ?? null);
+      clearTransientState();
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    }
+  }
+
+  async function handleDeletePlaySet(playSetId: string) {
+    try {
+      await backend.deletePlaySet(playSetId);
+      setPlaySets((current) => current.filter((playSet) => playSet.id !== playSetId));
+      setPlaysBySetId((current) => {
+        const next = { ...current };
+        delete next[playSetId];
+        return next;
+      });
+      if (activePlaySetId === playSetId) {
+        const fallback = playSets.find((playSet) => playSet.id !== playSetId) ?? null;
+        setActivePlaySetId(fallback?.id ?? null);
+        setActivePlayId(null);
+        clearTransientState();
+      }
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    }
+  }
+
+  function handleSelectPlaySet(playSetId: string) {
+    setActivePlaySetId(playSetId);
+    setActivePlayId((playsBySetId[playSetId] ?? [])[0]?.id ?? null);
+    clearTransientState();
+  }
+
+  async function handleCreatePlay() {
+    if (!activePlaySet) {
+      return;
+    }
+
+    const nextPlay = createPlayDocument({
+      playSetId: activePlaySet.id,
+      playNumber: activeSetPlays.length + 1,
+      settings: activePlaySet.settings,
+    });
+
+    try {
+      const saved = await backend.savePlay(nextPlay);
+      setPlaysBySetId((current) => ({
+        ...current,
+        [activePlaySet.id]: [...(current[activePlaySet.id] ?? []), saved],
+      }));
+      setActivePlayId(saved.id);
+      clearTransientState();
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    }
+  }
+
+  async function handleDuplicatePlay(playId: string) {
+    if (!activePlaySet) {
+      return;
+    }
+
+    const sourcePlay = activeSetPlays.find((play) => play.id === playId);
+    if (!sourcePlay) {
+      return;
+    }
+
+    const duplicate = clonePlayDocument(sourcePlay, {
+      playSetId: activePlaySet.id,
+      playNumber: activeSetPlays.length + 1,
+    });
+
+    try {
+      const saved = await backend.savePlay(duplicate);
+      setPlaysBySetId((current) => ({
+        ...current,
+        [activePlaySet.id]: [...(current[activePlaySet.id] ?? []), saved],
+      }));
+      setActivePlayId(saved.id);
+      clearTransientState();
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    }
+  }
+
+  async function handleDeletePlay(playId: string) {
+    if (!activePlaySetId) {
+      return;
+    }
+
+    const remaining = renumberPlays(activeSetPlays.filter((play) => play.id !== playId));
+    setPlaysBySetId((current) => ({
+      ...current,
+      [activePlaySetId]: remaining,
+    }));
+
+    try {
+      await backend.deletePlay(playId);
+      await persistPlaysImmediately(remaining);
+      if (activePlayId === playId) {
+        setActivePlayId(remaining[0]?.id ?? null);
+        clearTransientState();
+      }
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    }
+  }
+
+  async function handleMovePlay(playId: string, direction: "up" | "down") {
+    if (!activePlaySetId) {
+      return;
+    }
+
+    const currentIndex = activeSetPlays.findIndex((play) => play.id === playId);
+    if (currentIndex < 0) {
+      return;
+    }
+
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= activeSetPlays.length) {
+      return;
+    }
+
+    const reordered = [...activeSetPlays];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+    const renumbered = renumberPlays(reordered);
+
+    setPlaysBySetId((current) => ({
+      ...current,
+      [activePlaySetId]: renumbered,
+    }));
+    await persistPlaysImmediately(renumbered);
+  }
+
+  async function handleCopyPlayToSet() {
+    if (!activePlay || !copyTargetPlaySetId) {
+      return;
+    }
+
+    const targetPlaySet = playSets.find((playSet) => playSet.id === copyTargetPlaySetId);
+    if (!targetPlaySet) {
+      return;
+    }
+
+    const targetPlays = playsBySetId[targetPlaySet.id] ?? [];
+    const copied = applyPlaySetSettingsToPlay(
+      clonePlayDocument(activePlay, {
+        playSetId: targetPlaySet.id,
+        playNumber: targetPlays.length + 1,
+      }),
+      targetPlaySet.settings,
+    );
+
+    try {
+      const saved = await backend.savePlay(copied);
+      setPlaysBySetId((current) => ({
+        ...current,
+        [targetPlaySet.id]: [...(current[targetPlaySet.id] ?? []), saved],
+      }));
+      setCopyTargetPlaySetId("");
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    }
   }
 
   function handlePlayerPress(playerId: string) {
@@ -147,7 +615,7 @@ function App() {
   }
 
   function handleBoardPress(point: Point) {
-    if (!draftPath) {
+    if (!draftPath || !activePlay) {
       return;
     }
 
@@ -155,7 +623,7 @@ function App() {
       current
         ? {
             ...current,
-            points: [...current.points, clampPoint(point)],
+            points: [...current.points, point],
           }
         : null,
     );
@@ -191,7 +659,7 @@ function App() {
     updateActivePlay((play) => ({
       ...play,
       players: play.players.map((player) =>
-        player.id === playerId ? { ...player, ...clampPoint(point) } : player,
+        player.id === playerId ? { ...player, ...point } : player,
       ),
     }));
   }
@@ -203,9 +671,7 @@ function App() {
         path.id === pathId
           ? {
               ...path,
-              points: path.points.map((pathPoint, index) =>
-                index === pointIndex ? clampPoint(point) : pathPoint,
-              ),
+              points: path.points.map((pathPoint, index) => (index === pointIndex ? point : pathPoint)),
             }
           : path,
       ),
@@ -215,20 +681,8 @@ function App() {
   function handlePlayerUpdate(playerId: string, changes: Partial<Pick<PlayerToken, "label" | "color">>) {
     updateActivePlay((play) => ({
       ...play,
-      players: play.players.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              ...changes,
-            }
-          : player,
-      ),
+      players: play.players.map((player) => (player.id === playerId ? { ...player, ...changes } : player)),
     }));
-  }
-
-  function handlePlayerCountChange(count: PlayerCount) {
-    updateActivePlay((play) => remapFormation(play, count));
-    resetTransientState();
   }
 
   function handleDeleteSelectedPath() {
@@ -243,70 +697,92 @@ function App() {
     setSelectedPathId(null);
   }
 
-  function handleApplyPreset(presetId: string) {
-    if (presetId === "custom") {
-      updateActivePlay((play) => ({
-        ...play,
-        printSettings: {
-          ...play.printSettings,
-          presetId: null,
-        },
-      }));
+  async function handleExportPlaySet() {
+    if (!activePlaySet) {
       return;
     }
 
-    const preset = PRINT_PRESETS.find((item) => item.id === presetId);
-    if (!preset) {
-      return;
-    }
-
-    updateActivePlay((play) => ({
-      ...play,
-      printSettings: {
-        presetId: preset.id,
-        width: preset.width,
-        height: preset.height,
-        unit: preset.unit,
-      },
-    }));
+    await exportPlaySetToPdf(activePlaySet, activeSetPlays, exportSvgRefs.current);
   }
 
-  async function handleExportPdf() {
-    if (!activePlay || !exportSvgRef.current) {
+  async function handleExportPlay() {
+    if (!activePlaySet || !activePlay) {
       return;
     }
 
-    await exportPlayToPdf(activePlay, exportSvgRef.current);
+    const svg = exportSvgRefs.current[activePlay.id];
+    if (!svg) {
+      return;
+    }
+
+    await exportPlayToPdf(activePlaySet, activePlay, svg);
   }
 
-  if (!activePlay) {
-    return null;
+  if (authState.status === "loading" || workspaceBusy) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-5 py-8 lg:px-8">
+        <div className="glass-panel rounded-[32px] border border-white/70 px-6 py-4 text-sm font-semibold text-ink-950/70 shadow-panel">
+          Loading your playbook...
+        </div>
+      </div>
+    );
+  }
+
+  if (authState.status !== "signed_in") {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(216,116,49,0.22),_transparent_22%),radial-gradient(circle_at_top_right,_rgba(95,125,83,0.18),_transparent_26%),linear-gradient(180deg,_#f7f2e8_0%,_#ebe2cf_100%)] px-5 py-8 text-ink-950 lg:px-8">
+        <AuthPanel busy={authBusy} error={authError ?? authState.error} onSubmit={handleAuthSubmit} />
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(216,116,49,0.22),_transparent_22%),radial-gradient(circle_at_top_right,_rgba(95,125,83,0.18),_transparent_26%),linear-gradient(180deg,_#f7f2e8_0%,_#ebe2cf_100%)] px-5 py-6 text-ink-950 lg:px-8">
-      <div className="mx-auto max-w-[1680px]">
-        <header className="mb-6 flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto max-w-[1720px]">
+        <header className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="font-display text-sm font-bold uppercase tracking-[0.28em] text-ember-500">Flag Football Playmaker</p>
             <h1 className="font-display text-4xl font-black tracking-tight text-ink-950 sm:text-5xl">
-              Build printable wristband plays without leaving the browser.
+              Build grouped wristband installs with cloud-saved Play Sets.
             </h1>
           </div>
-          <p className="max-w-xl text-sm leading-6 text-ink-950/70">
-            Choose a formation, drag players into place, sketch routes on the board, and export a sized PDF that is ready for print.
-          </p>
+          <div className="flex flex-col items-start gap-2 text-sm text-ink-950/70 lg:items-end">
+            <p>{authState.user?.email}</p>
+            <button
+              className="rounded-full border border-ink-950/15 px-4 py-2 font-semibold text-ink-950 transition hover:border-ink-950/35"
+              onClick={() => void backend.signOut()}
+              type="button"
+            >
+              Sign out
+            </button>
+          </div>
         </header>
 
-        <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)_360px]">
+        {workspaceError ? (
+          <div className="mb-4 rounded-3xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {workspaceError}
+          </div>
+        ) : null}
+
+        <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)_390px]">
           <div className="min-h-[720px] xl:sticky xl:top-6">
             <PlayLibrary
-              activePlayId={activePlay.id}
-              onCreate={handleCreatePlay}
-              onDelete={handleDeletePlay}
-              onDuplicate={handleDuplicatePlay}
-              onSelect={handleSelectPlay}
-              plays={plays}
+              activePlayId={activePlay?.id ?? null}
+              activePlaySetId={activePlaySet?.id ?? null}
+              onCreatePlay={handleCreatePlay}
+              onCreatePlaySet={handleCreatePlaySet}
+              onDeletePlay={handleDeletePlay}
+              onDeletePlaySet={handleDeletePlaySet}
+              onDuplicatePlay={handleDuplicatePlay}
+              onDuplicatePlaySet={handleDuplicatePlaySet}
+              onMovePlay={handleMovePlay}
+              onSelectPlay={(playId) => {
+                setActivePlayId(playId);
+                clearTransientState();
+              }}
+              onSelectPlaySet={handleSelectPlaySet}
+              playSets={setScopedPlaySets}
+              plays={activeSetPlays}
             />
           </div>
 
@@ -325,70 +801,231 @@ function App() {
               tool={tool}
             />
 
-            <section className="grid gap-4 rounded-[38px] bg-ink-950/80 p-4 shadow-panel sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 text-white/80">
-                <div>
-                  <p className="font-display text-xl font-bold text-white">{activePlay.name}</p>
-                  <p className="text-sm text-white/70">
-                    {draftPath
-                      ? "Click on the board to add route points, then finish the path."
-                      : tool === "handoff"
-                        ? handoffSourceId
-                          ? "Choose the receiving player to create the handoff."
-                          : "Choose the ball carrier, then the receiving player."
-                        : "Use select mode to drag players and edit route handles."}
-                  </p>
+            {activePlaySet && activePlay ? (
+              <section className="grid gap-4 rounded-[38px] bg-ink-950/80 p-4 shadow-panel sm:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 text-white/80">
+                  <div>
+                    <p className="font-display text-xl font-bold text-white">
+                      {activePlaySet.name}: {activePlay.name}
+                    </p>
+                    <p className="text-sm text-white/70">
+                      {draftPath
+                        ? "Click on the board to add route points, then finish the path."
+                        : tool === "handoff"
+                          ? handoffSourceId
+                            ? "Choose the receiving player to create the handoff."
+                            : "Choose the ball carrier, then the receiving player."
+                          : "Use select mode to drag players and edit route handles."}
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/85">
+                    Play #{activePlay.playNumber}
+                  </div>
                 </div>
-                <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/85">
-                  {activePlay.playerCount} offensive players
-                </div>
-              </div>
 
-              <Playboard
-                draftPath={draftPath}
-                handoffSourceId={handoffSourceId}
-                onBackgroundPress={() => {
-                  setSelectedPathId(null);
-                  setSelectedPlayerId(null);
-                }}
-                onBoardPress={handleBoardPress}
-                onFinishDraftPath={handleFinishDraft}
-                onPathPointMove={handleMovePathPoint}
-                onPathPress={(pathId) => {
-                  setSelectedPathId(pathId);
-                  setSelectedPlayerId(null);
-                }}
-                onPlayerMove={handleMovePlayer}
-                onPlayerPress={handlePlayerPress}
-                play={activePlay}
-                selectedPathId={selectedPathId}
-                selectedPlayerId={selectedPlayerId}
-                tool={tool}
-              />
-            </section>
+                <Playboard
+                  draftPath={draftPath}
+                  handoffSourceId={handoffSourceId}
+                  onBackgroundPress={() => {
+                    setSelectedPathId(null);
+                    setSelectedPlayerId(null);
+                  }}
+                  onBoardPress={handleBoardPress}
+                  onFinishDraftPath={handleFinishDraft}
+                  onPathPointMove={handleMovePathPoint}
+                  onPathPress={(pathId) => {
+                    setSelectedPathId(pathId);
+                    setSelectedPlayerId(null);
+                  }}
+                  onPlayerMove={handleMovePlayer}
+                  onPlayerPress={handlePlayerPress}
+                  play={activePlay}
+                  playSetSettings={activePlaySet.settings}
+                  selectedPathId={selectedPathId}
+                  selectedPlayerId={selectedPlayerId}
+                  tool={tool}
+                />
+              </section>
+            ) : (
+              <section className="grid gap-4 rounded-[38px] bg-ink-950/80 p-8 text-center text-white/80 shadow-panel">
+                <p className="font-display text-2xl font-bold text-white">No Play Set yet</p>
+                <p className="mx-auto max-w-2xl text-sm text-white/70">
+                  Create your first Play Set to group plays by team or install package, then build cloud-saved wristband exports around it.
+                </p>
+                <div>
+                  <button
+                    className="rounded-full bg-ember-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-ember-500/90"
+                    onClick={handleCreatePlaySet}
+                    type="button"
+                  >
+                    Create your first Play Set
+                  </button>
+                </div>
+              </section>
+            )}
           </main>
 
           <div className="min-h-[720px] xl:sticky xl:top-6">
             <InspectorPanel
+              copyTargetPlaySetId={copyTargetPlaySetId}
               isDraftingPath={Boolean(draftPath)}
-              onApplyPreset={handleApplyPreset}
+              onApplyPreset={(presetId) => {
+                if (!activePlaySet) {
+                  return;
+                }
+
+                if (presetId === "custom") {
+                  handlePlaySetSettingsCommit({
+                    ...activePlaySet.settings,
+                    print: {
+                      ...activePlaySet.settings.print,
+                      presetId: null,
+                    },
+                  });
+                  return;
+                }
+
+                const preset = PRINT_PRESETS.find((item) => item.id === presetId);
+                if (!preset) {
+                  return;
+                }
+
+                handlePlaySetSettingsCommit({
+                  ...activePlaySet.settings,
+                  print: {
+                    presetId: preset.id,
+                    width: preset.width,
+                    height: preset.height,
+                    unit: preset.unit,
+                  },
+                  layout: {
+                    ...activePlaySet.settings.layout,
+                    cardAspectRatio: Number((preset.width / preset.height).toFixed(3)),
+                  },
+                });
+              }}
+              onBackgroundColorChange={(backgroundColor) => {
+                if (!activePlaySet) {
+                  return;
+                }
+
+                handlePlaySetSettingsCommit({
+                  ...activePlaySet.settings,
+                  field: {
+                    ...activePlaySet.settings.field,
+                    backgroundColor,
+                  },
+                });
+              }}
+              onCopyPlayToSet={handleCopyPlayToSet}
+              onCopyTargetPlaySetChange={setCopyTargetPlaySetId}
               onDeleteSelectedPath={handleDeleteSelectedPath}
-              onExportPdf={handleExportPdf}
-              onFieldThemeChange={(fieldTheme) => updateActivePlay((play) => ({ ...play, fieldTheme }))}
-              onNameChange={(name) => updateActivePlay((play) => ({ ...play, name }))}
-              onNotesChange={(notes) => updateActivePlay((play) => ({ ...play, notes }))}
-              onPlayerCountChange={handlePlayerCountChange}
-              onPlayerUpdate={handlePlayerUpdate}
-              onPrintSettingChange={(changes) =>
+              onExportPlay={handleExportPlay}
+              onExportPlaySet={handleExportPlaySet}
+              onFieldThemeChange={(theme) => {
+                if (!activePlaySet) {
+                  return;
+                }
+
+                handlePlaySetSettingsCommit({
+                  ...activePlaySet.settings,
+                  field: {
+                    ...activePlaySet.settings.field,
+                    theme,
+                  },
+                });
+              }}
+              onLayoutSettingChange={(changes) => {
+                if (!activePlaySet) {
+                  return;
+                }
+
+                const nextLayout = {
+                  ...activePlaySet.settings.layout,
+                  ...changes,
+                };
+                const ratio =
+                  typeof nextLayout.cardAspectRatio === "number" && nextLayout.cardAspectRatio > 0
+                    ? nextLayout.cardAspectRatio
+                    : activePlaySet.settings.layout.cardAspectRatio;
+
+                handlePlaySetSettingsCommit({
+                  ...activePlaySet.settings,
+                  layout: {
+                    ...nextLayout,
+                    cardAspectRatio: Number(ratio.toFixed(3)),
+                  },
+                  print: {
+                    ...activePlaySet.settings.print,
+                    height: Number((activePlaySet.settings.print.width / ratio).toFixed(2)),
+                  },
+                });
+              }}
+              onPlayDisplaySettingsChange={(displaySettings) => {
                 updateActivePlay((play) => ({
                   ...play,
-                  printSettings: {
-                    ...play.printSettings,
-                    ...changes,
-                  },
+                  displaySettings: normalizePlayDisplaySettings(displaySettings),
+                }));
+              }}
+              onPlayNameChange={(name) => updateActivePlay((play) => ({ ...play, name }))}
+              onPlayNotesChange={(notes) => updateActivePlay((play) => ({ ...play, notes }))}
+              onPlaySetNameChange={(name) =>
+                updateActivePlaySet((playSet) => ({
+                  ...playSet,
+                  name,
                 }))
               }
+              onPlayerCountChange={(count) => {
+                if (!activePlaySet) {
+                  return;
+                }
+
+                const nextSettings = normalizePlaySetSettings({
+                  ...activePlaySet.settings,
+                  roster: {
+                    ...activePlaySet.settings.roster,
+                    playerCount: count,
+                  },
+                });
+                const nextPlaySet = touchPlaySet({
+                  ...activePlaySet,
+                  settings: nextSettings,
+                });
+                const remappedPlays = renumberPlays(
+                  activeSetPlays.map((play) => remapFormation(play, count)),
+                );
+
+                setPlaySets((current) => current.map((item) => (item.id === nextPlaySet.id ? nextPlaySet : item)));
+                setPlaysBySetId((current) => ({
+                  ...current,
+                  [nextPlaySet.id]: remappedPlays,
+                }));
+                clearTransientState();
+                schedulePlaySetSave(nextPlaySet);
+                void persistPlaysImmediately(remappedPlays);
+              }}
+              onPlayerUpdate={handlePlayerUpdate}
+              onPrintSettingChange={(changes) => {
+                if (!activePlaySet) {
+                  return;
+                }
+
+                const nextPrint = {
+                  ...activePlaySet.settings.print,
+                  ...changes,
+                };
+                handlePlaySetSettingsCommit({
+                  ...activePlaySet.settings,
+                  print: nextPrint,
+                  layout: {
+                    ...activePlaySet.settings.layout,
+                    cardAspectRatio: Number((nextPrint.width / nextPrint.height).toFixed(3)),
+                  },
+                });
+              }}
               play={activePlay}
+              playSet={activePlaySet}
+              playSets={playSets}
               selectedPath={selectedPath}
               selectedPlayer={selectedPlayer}
             />
@@ -396,22 +1033,40 @@ function App() {
         </div>
       </div>
 
-      <div className="absolute -left-[99999px] top-0 h-0 w-0 overflow-hidden" aria-hidden="true">
-        <Playboard
-          accessibleLabel={null}
-          draftPath={null}
-          enableTestIds={false}
-          handoffSourceId={null}
-          interactive={false}
-          play={activePlay}
-          ref={exportSvgRef}
-          selectedPathId={null}
-          selectedPlayerId={null}
-          tool="select"
-        />
-      </div>
+      {activePlaySet ? (
+        <div className="absolute -left-[99999px] top-0 h-0 w-0 overflow-hidden" aria-hidden="true">
+          {activeSetPlays.map((play) => (
+            <Playboard
+              accessibleLabel={null}
+              draftPath={null}
+              enableTestIds={false}
+              handoffSourceId={null}
+              interactive={false}
+              key={play.id}
+              play={play}
+              playSetSettings={activePlaySet.settings}
+              ref={(node) => {
+                exportSvgRefs.current[play.id] = node;
+              }}
+              selectedPathId={null}
+              selectedPlayerId={null}
+              tool="select"
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
+function App() {
+  if (!supabaseBackend.isConfigured) {
+    return <SetupPanel />;
+  }
+
+  return <AppShell backend={supabaseBackend} />;
+}
+
 export default App;
+
+export { createMemoryBackend };

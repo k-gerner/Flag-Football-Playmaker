@@ -46,19 +46,53 @@ export interface PrintSettings {
   unit: Unit;
 }
 
+export interface PlaySetSettings {
+  roster: {
+    playerCount: PlayerCount;
+  };
+  field: {
+    theme: FieldTheme;
+    backgroundColor: string;
+  };
+  print: PrintSettings;
+  layout: {
+    playsPerPage: number;
+    cardAspectRatio: number;
+  };
+  export: {
+    includePlayNumber: boolean;
+    includePlayName: boolean;
+  };
+}
+
+export interface PlayDisplaySettings {
+  yardMarkers: number[];
+  annotations: {
+    showLineOfScrimmageLabel: boolean;
+  };
+}
+
 export interface PlayDocument {
   id: string;
+  playSetId: string;
   name: string;
-  playerCount: PlayerCount;
+  notes: string;
+  playNumber: number;
   fieldLayout: FieldLayout;
-  fieldTheme: FieldTheme;
   players: PlayerToken[];
   paths: RoutePath[];
   handoffs: HandoffMark[];
-  notes: string;
-  printSettings: PrintSettings;
+  displaySettings: PlayDisplaySettings;
   updatedAt: string;
   schemaVersion: number;
+}
+
+export interface PlaySet {
+  id: string;
+  name: string;
+  settings: PlaySetSettings;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DraftPath {
@@ -66,3 +100,24 @@ export interface DraftPath {
   kind: RouteKind;
   points: Point[];
 }
+
+export interface AuthUser {
+  id: string;
+  email: string;
+}
+
+export interface AuthSessionState {
+  status: "loading" | "signed_out" | "signed_in";
+  user: AuthUser | null;
+  error: string | null;
+}
+
+export interface StoredPlayPayload {
+  fieldLayout?: FieldLayout;
+  players?: PlayerToken[];
+  paths?: RoutePath[];
+  handoffs?: HandoffMark[];
+  displaySettings?: Partial<PlayDisplaySettings>;
+  schemaVersion?: number;
+}
+
