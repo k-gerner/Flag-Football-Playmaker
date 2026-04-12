@@ -1,7 +1,7 @@
 export type PlayerCount = 5 | 7 | 8;
 export type ToolMode = "select" | "route" | "motion" | "handoff";
 export type RouteKind = "route" | "motion";
-export type Unit = "in" | "mm";
+export type Unit = "in" | "cm";
 
 export interface Point {
   x: number;

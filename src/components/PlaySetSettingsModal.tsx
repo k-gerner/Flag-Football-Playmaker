@@ -1,15 +1,12 @@
-import { useEffect } from "react";
-import { getPlaySetCardDimensions } from "../lib/playbook";
+import { useEffect, useState } from "react";
+import { convertPrintMeasurement, getPlaySetCardDimensions, normalizePlaySetSettings } from "../lib/playbook";
 import type { PlaySet } from "../lib/types";
 
 interface PlaySetSettingsModalProps {
   playSet: PlaySet | null;
   open: boolean;
   onClose: () => void;
-  onPlaySetNameChange: (name: string) => void;
-  onBackgroundColorChange: (backgroundColor: string) => void;
-  onPrintSettingChange: (changes: Partial<PlaySet["settings"]["print"]>) => void;
-  onLayoutSettingChange: (changes: Partial<PlaySet["settings"]["layout"]>) => void;
+  onSave: (payload: { name: string; settings: PlaySet["settings"] }) => void;
   onExportPlaySet: () => void;
 }
 
@@ -17,12 +14,12 @@ export function PlaySetSettingsModal({
   playSet,
   open,
   onClose,
-  onPlaySetNameChange,
-  onBackgroundColorChange,
-  onPrintSettingChange,
-  onLayoutSettingChange,
+  onSave,
   onExportPlaySet,
 }: PlaySetSettingsModalProps) {
+  const [draftName, setDraftName] = useState("");
+  const [draftSettings, setDraftSettings] = useState(() => normalizePlaySetSettings());
+
   useEffect(() => {
     if (!open) {
       return;
@@ -40,12 +37,25 @@ export function PlaySetSettingsModal({
     };
   }, [onClose, open]);
 
+  useEffect(() => {
+    if (!open || !playSet) {
+      return;
+    }
+
+    setDraftName(playSet.name);
+    setDraftSettings(normalizePlaySetSettings(playSet.settings));
+  }, [open, playSet]);
+
   if (!open || !playSet) {
     return null;
   }
 
-  const cardDimensions = getPlaySetCardDimensions(playSet.settings);
+  const cardDimensions = getPlaySetCardDimensions(draftSettings);
   const previewAspect = cardDimensions.width / cardDimensions.height;
+
+  function updateDraftSettings(updater: (current: PlaySet["settings"]) => PlaySet["settings"]) {
+    setDraftSettings((current) => normalizePlaySetSettings(updater(current)));
+  }
 
   return (
     <div
@@ -95,8 +105,8 @@ export function PlaySetSettingsModal({
                 <span className="mb-1 block text-sm font-semibold text-ink-950/70">Set name</span>
                 <input
                   className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
-                  onChange={(event) => onPlaySetNameChange(event.target.value)}
-                  value={playSet.name}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  value={draftName}
                 />
               </label>
 
@@ -104,7 +114,7 @@ export function PlaySetSettingsModal({
                 <span className="mb-1 block text-sm font-semibold text-ink-950/70">Player count</span>
                 <div className="flex h-[42px] items-center rounded-2xl border border-black/10 bg-white/80 px-3">
                   <span className="rounded-full bg-field-100 px-3 py-1 text-sm font-semibold text-field-700">
-                    {playSet.settings.roster.playerCount} players
+                    {draftSettings.roster.playerCount} players
                   </span>
                 </div>
               </label>
@@ -113,9 +123,17 @@ export function PlaySetSettingsModal({
                 <span className="mb-1 block text-sm font-semibold text-ink-950/70">Card background color</span>
                 <input
                   className="h-11 w-full rounded-2xl border border-black/10 bg-white/80 p-1"
-                  onChange={(event) => onBackgroundColorChange(event.target.value)}
+                  onChange={(event) =>
+                    updateDraftSettings((current) => ({
+                      ...current,
+                      field: {
+                        ...current.field,
+                        backgroundColor: event.target.value,
+                      },
+                    }))
+                  }
                   type="color"
-                  value={playSet.settings.field.backgroundColor}
+                  value={draftSettings.field.backgroundColor}
                 />
               </label>
             </div>
@@ -135,13 +153,17 @@ export function PlaySetSettingsModal({
                     className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     min={1}
                     onChange={(event) =>
-                      onLayoutSettingChange({
-                        rowsPerPage: Number(event.target.value) || playSet.settings.layout.rowsPerPage,
-                      })
+                      updateDraftSettings((current) => ({
+                        ...current,
+                        layout: {
+                          ...current.layout,
+                          rowsPerPage: Number(event.target.value) || current.layout.rowsPerPage,
+                        },
+                      }))
                     }
                     step={1}
                     type="number"
-                    value={playSet.settings.layout.rowsPerPage}
+                    value={draftSettings.layout.rowsPerPage}
                   />
                 </label>
                 <label className="block">
@@ -150,13 +172,17 @@ export function PlaySetSettingsModal({
                     className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     min={1}
                     onChange={(event) =>
-                      onLayoutSettingChange({
-                        columnsPerPage: Number(event.target.value) || playSet.settings.layout.columnsPerPage,
-                      })
+                      updateDraftSettings((current) => ({
+                        ...current,
+                        layout: {
+                          ...current.layout,
+                          columnsPerPage: Number(event.target.value) || current.layout.columnsPerPage,
+                        },
+                      }))
                     }
                     step={1}
                     type="number"
-                    value={playSet.settings.layout.columnsPerPage}
+                    value={draftSettings.layout.columnsPerPage}
                   />
                 </label>
               </div>
@@ -168,14 +194,18 @@ export function PlaySetSettingsModal({
                     className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     min={0.5}
                     onChange={(event) =>
-                      onPrintSettingChange({
-                        presetId: null,
-                        width: Number(event.target.value) || playSet.settings.print.width,
-                      })
+                      updateDraftSettings((current) => ({
+                        ...current,
+                        print: {
+                          ...current.print,
+                          presetId: null,
+                          width: Number(event.target.value) || current.print.width,
+                        },
+                      }))
                     }
                     step="0.05"
                     type="number"
-                    value={playSet.settings.print.width}
+                    value={draftSettings.print.width}
                   />
                 </label>
                 <label className="block">
@@ -184,14 +214,18 @@ export function PlaySetSettingsModal({
                     className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     min={0.5}
                     onChange={(event) =>
-                      onPrintSettingChange({
-                        presetId: null,
-                        height: Number(event.target.value) || playSet.settings.print.height,
-                      })
+                      updateDraftSettings((current) => ({
+                        ...current,
+                        print: {
+                          ...current.print,
+                          presetId: null,
+                          height: Number(event.target.value) || current.print.height,
+                        },
+                      }))
                     }
                     step="0.05"
                     type="number"
-                    value={playSet.settings.print.height}
+                    value={draftSettings.print.height}
                   />
                 </label>
                 <label className="block">
@@ -199,42 +233,68 @@ export function PlaySetSettingsModal({
                   <select
                     className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     onChange={(event) =>
-                      onPrintSettingChange({
-                        presetId: null,
-                        unit: event.target.value as PlaySet["settings"]["print"]["unit"],
+                      updateDraftSettings((current) => {
+                        const nextUnit = event.target.value as PlaySet["settings"]["print"]["unit"];
+                        return {
+                          ...current,
+                          print: {
+                            ...current.print,
+                            presetId: null,
+                            width: convertPrintMeasurement(current.print.width, current.print.unit, nextUnit),
+                            height: convertPrintMeasurement(current.print.height, current.print.unit, nextUnit),
+                            unit: nextUnit,
+                          },
+                        };
                       })
                     }
-                    value={playSet.settings.print.unit}
+                    value={draftSettings.print.unit}
                   >
                     <option value="in">Inches</option>
-                    <option value="mm">Millimeters</option>
+                    <option value="cm">Centimeters</option>
                   </select>
                 </label>
               </div>
 
               <div>
-                <p className="mb-2 text-sm font-semibold text-ink-950/70">Card preview</p>
+                <p className="mb-2 text-sm font-semibold text-ink-950/70">Page preview</p>
                 <div className="rounded-[24px] border border-dashed border-ink-950/15 bg-field-50/70 p-4">
                   <div
                     className="mx-auto rounded-2xl border border-ink-950/20 shadow-sm"
                     style={{
                       aspectRatio: `${previewAspect}`,
-                      backgroundColor: playSet.settings.field.backgroundColor,
+                      backgroundColor: draftSettings.field.backgroundColor,
                       maxWidth: "100%",
                       minHeight: 90,
                       width: previewAspect >= 1 ? "100%" : `${previewAspect * 100}%`,
                     }}
                   >
                     <div className="flex h-full items-center justify-center text-center text-sm text-ink-950/60">
-                      {playSet.settings.layout.rowsPerPage} rows × {playSet.settings.layout.columnsPerPage} cols
+                      {draftSettings.layout.rowsPerPage} rows × {draftSettings.layout.columnsPerPage} cols
                       <br />
-                      {playSet.settings.print.width} x {playSet.settings.print.height} {playSet.settings.print.unit}
+                      {draftSettings.print.width} x {draftSettings.print.height} {draftSettings.print.unit}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </section>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            className="rounded-full border border-ink-950/15 px-4 py-2 text-sm font-semibold text-ink-950 transition hover:border-ink-950/35"
+            onClick={onClose}
+            type="button"
+          >
+            Cancel
+          </button>
+          <button
+            className="rounded-full bg-ember-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-ember-500/90"
+            onClick={() => onSave({ name: draftName.trim() || playSet.name, settings: draftSettings })}
+            type="button"
+          >
+            Save
+          </button>
         </div>
       </div>
     </div>

@@ -11,6 +11,7 @@ import type {
   PlaySet,
   PlaySetSettings,
   StoredPlayPayload,
+  Unit,
 } from "./types";
 
 export const BOARD_LAYOUT: FieldLayout = {
@@ -52,6 +53,7 @@ export const PLAYER_COLORS = [
 ];
 
 export const YARD_MARKER_OPTIONS = [0, 5, 10, 15];
+const CENTIMETERS_PER_INCH = 2.54;
 
 export const PRINT_PRESETS: Array<{
   id: string;
@@ -62,7 +64,7 @@ export const PRINT_PRESETS: Array<{
 }> = [
   { id: "wristband-slim", label: "Slim wristband 3 x 1 in", width: 3, height: 1, unit: "in" },
   { id: "wristband-standard", label: "Standard wristband 3.5 x 1.25 in", width: 3.5, height: 1.25, unit: "in" },
-  { id: "metric-compact", label: "Compact 90 x 35 mm", width: 90, height: 35, unit: "mm" },
+  { id: "metric-compact", label: "Compact 9 x 3.5 cm", width: 9, height: 3.5, unit: "cm" },
 ];
 
 export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
@@ -91,7 +93,21 @@ export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
 };
 
 export function getPrintSpacing(unit: PrintSettings["unit"]) {
-  return unit === "in" ? 0.08 : 2;
+  return unit === "in" ? 0.08 : 0.2;
+}
+
+export function convertPrintMeasurement(value: number, fromUnit: Unit, toUnit: Unit) {
+  if (!Number.isFinite(value)) {
+    return value;
+  }
+
+  if (fromUnit === toUnit) {
+    return Number(value.toFixed(1));
+  }
+
+  const inches = fromUnit === "in" ? value : value / CENTIMETERS_PER_INCH;
+  const converted = toUnit === "in" ? inches : inches * CENTIMETERS_PER_INCH;
+  return Number(converted.toFixed(1));
 }
 
 export function getPlaySetCardDimensions(settings: PlaySetSettings) {
@@ -162,9 +178,18 @@ export function createPlayers(playerCount: PlayerCount): PlayerToken[] {
 }
 
 export function normalizePlaySetSettings(input?: Partial<PlaySetSettings> | null): PlaySetSettings {
+  const rawInputUnit = (input?.print as { unit?: string } | undefined)?.unit;
+  const resolvedUnit =
+    rawInputUnit === "in" || rawInputUnit === "cm"
+      ? rawInputUnit
+      : rawInputUnit === "mm"
+        ? "cm"
+        : DEFAULT_PLAY_SET_SETTINGS.print.unit;
+
   const print = {
     ...DEFAULT_PLAY_SET_SETTINGS.print,
     ...(input?.print ?? {}),
+    unit: resolvedUnit,
   };
 
   const layout = {
@@ -174,9 +199,18 @@ export function normalizePlaySetSettings(input?: Partial<PlaySetSettings> | null
   const rowsPerPage = Math.min(6, Math.max(1, Math.round(layout.rowsPerPage)));
   const columnsPerPage = Math.min(6, Math.max(1, Math.round(layout.columnsPerPage)));
   const playsPerPage = rowsPerPage * columnsPerPage;
-  const resolvedWidth = Number.isFinite(print.width) && print.width > 0 ? print.width : DEFAULT_PLAY_SET_SETTINGS.print.width;
+  const normalizedWidthFromInput =
+    rawInputUnit === "mm" && Number.isFinite(print.width) ? Number((print.width / 10).toFixed(1)) : print.width;
+  const normalizedHeightFromInput =
+    rawInputUnit === "mm" && Number.isFinite(print.height) ? Number((print.height / 10).toFixed(1)) : print.height;
+  const resolvedWidth =
+    Number.isFinite(normalizedWidthFromInput) && normalizedWidthFromInput > 0
+      ? normalizedWidthFromInput
+      : DEFAULT_PLAY_SET_SETTINGS.print.width;
   const resolvedHeight =
-    Number.isFinite(print.height) && print.height > 0 ? print.height : DEFAULT_PLAY_SET_SETTINGS.print.height;
+    Number.isFinite(normalizedHeightFromInput) && normalizedHeightFromInput > 0
+      ? normalizedHeightFromInput
+      : DEFAULT_PLAY_SET_SETTINGS.print.height;
   const cardDimensions = getPlaySetCardDimensions({
     ...DEFAULT_PLAY_SET_SETTINGS,
     print: {

@@ -328,21 +328,6 @@ export function AppShell({ backend }: AppShellProps) {
     );
   }
 
-  function handlePlaySetSettingsCommit(nextSettings: PlaySet["settings"]) {
-    if (!activePlaySet) {
-      return;
-    }
-
-    const normalizedSettings = normalizePlaySetSettings(nextSettings);
-    const nextPlaySet = touchPlaySet({
-      ...activePlaySet,
-      settings: normalizedSettings,
-    });
-
-    setPlaySets((current) => current.map((item) => (item.id === nextPlaySet.id ? nextPlaySet : item)));
-    schedulePlaySetSave(nextPlaySet);
-  }
-
   async function handleCreatePlaySet(input?: { name: string; settings: Partial<PlaySet["settings"]> }) {
     if (!userId) {
       return;
@@ -936,60 +921,22 @@ export function AppShell({ backend }: AppShellProps) {
       />
 
       <PlaySetSettingsModal
-        onBackgroundColorChange={(backgroundColor) => {
-          if (!activePlaySet) {
-            return;
-          }
-
-          handlePlaySetSettingsCommit({
-            ...activePlaySet.settings,
-            field: {
-              ...activePlaySet.settings.field,
-              backgroundColor,
-            },
-          });
-        }}
         onClose={() => setIsPlaySetSettingsOpen(false)}
         onExportPlaySet={handleExportPlaySet}
-        onLayoutSettingChange={(changes) => {
+        onSave={({ name, settings }) => {
           if (!activePlaySet) {
             return;
           }
 
-          const nextLayout = {
-            ...activePlaySet.settings.layout,
-            ...changes,
-          };
-
-          handlePlaySetSettingsCommit({
-            ...activePlaySet.settings,
-            layout: {
-              ...nextLayout,
-              playsPerPage:
-                (nextLayout.rowsPerPage ?? activePlaySet.settings.layout.rowsPerPage) *
-                (nextLayout.columnsPerPage ?? activePlaySet.settings.layout.columnsPerPage),
-            },
-          });
-        }}
-        onPlaySetNameChange={(name) =>
-          updateActivePlaySet((playSet) => ({
-            ...playSet,
+          const normalizedSettings = normalizePlaySetSettings(settings);
+          const nextPlaySet = touchPlaySet({
+            ...activePlaySet,
             name,
-          }))
-        }
-        onPrintSettingChange={(changes) => {
-          if (!activePlaySet) {
-            return;
-          }
-
-          const nextPrint = {
-            ...activePlaySet.settings.print,
-            ...changes,
-          };
-          handlePlaySetSettingsCommit({
-            ...activePlaySet.settings,
-            print: nextPrint,
+            settings: normalizedSettings,
           });
+          setPlaySets((current) => current.map((item) => (item.id === nextPlaySet.id ? nextPlaySet : item)));
+          schedulePlaySetSave(nextPlaySet);
+          setIsPlaySetSettingsOpen(false);
         }}
         open={isPlaySetSettingsOpen}
         playSet={activePlaySet}

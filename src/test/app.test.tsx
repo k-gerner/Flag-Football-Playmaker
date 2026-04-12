@@ -42,6 +42,7 @@ describe("AppShell", () => {
   it("shows player count as a locked value in play set settings", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
 
+    await screen.findByTestId("play-set-picker-trigger");
     fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
     const modal = await screen.findByTestId("play-set-settings-modal");
 
@@ -138,6 +139,72 @@ describe("AppShell", () => {
     expect(screen.getByDisplayValue("Play Set 1")).toBeInTheDocument();
   });
 
+  it("keeps play set changes local until save is clicked", async () => {
+    const playSet = createPlaySet("Play Set 1");
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [playSet],
+          initialPlays: [],
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByTestId("play-set-picker-trigger"));
+    const rail = await screen.findByTestId("play-set-picker-rail");
+    expect(within(rail).getByText("4x1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
+    const rowsInput = within(modal).getByDisplayValue("4");
+    const columnsInput = within(modal).getByDisplayValue("1");
+
+    fireEvent.change(rowsInput, { target: { value: "2" } });
+    fireEvent.change(columnsInput, { target: { value: "2" } });
+
+    expect(within(modal).getByText(/2 rows × 2 cols/i)).toBeInTheDocument();
+    expect(within(rail).getByText("4x1")).toBeInTheDocument();
+    expect(within(rail).queryByText("2x2")).not.toBeInTheDocument();
+
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+
+    expect(screen.queryByTestId("play-set-settings-modal")).not.toBeInTheDocument();
+    expect(within(rail).getByText("2x2")).toBeInTheDocument();
+  });
+
+  it("converts page dimensions when the print unit changes", async () => {
+    const playSet = createPlaySet("Play Set 1");
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [playSet],
+          initialPlays: [],
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
+    const unitSelect = within(modal).getByRole("combobox");
+
+    expect(within(modal).getByDisplayValue("8.5")).toBeInTheDocument();
+    expect(within(modal).getByDisplayValue("11")).toBeInTheDocument();
+
+    fireEvent.change(unitSelect, {
+      target: { value: "cm" },
+    });
+
+    expect(within(modal).getByDisplayValue("21.6")).toBeInTheDocument();
+    expect(within(modal).getByDisplayValue("27.9")).toBeInTheDocument();
+
+    fireEvent.change(unitSelect, {
+      target: { value: "in" },
+    });
+
+    expect(within(modal).getByDisplayValue("8.5")).toBeInTheDocument();
+    expect(within(modal).getByDisplayValue("11")).toBeInTheDocument();
+  });
+
   it("creates a play set from the setup modal with roster and page layout details", async () => {
     render(<AppShell backend={createMemoryBackend({ initialPlaySets: [], initialPlays: [] })} />);
 
@@ -170,7 +237,7 @@ describe("AppShell", () => {
     fireEvent.click(screen.getByTestId("play-set-picker-trigger"));
     const rail = await screen.findByTestId("play-set-picker-rail");
     expect(within(rail).getByText("5 players")).toBeInTheDocument();
-    expect(within(rail).getByText("4/page")).toBeInTheDocument();
+    expect(within(rail).getByText("2x2")).toBeInTheDocument();
   });
 
   it("shows overlay arrows for an overflowing play set rail and scrolls by one tile", async () => {

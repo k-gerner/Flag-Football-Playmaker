@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { normalizePlaySetSettings } from "../lib/playbook";
-import type { PlaySetSettings, PlayerCount } from "../lib/types";
+import { convertPrintMeasurement, normalizePlaySetSettings } from "../lib/playbook";
+import type { PlaySetSettings, PlayerCount, Unit } from "../lib/types";
 
 interface CreatePlaySetModalProps {
   open: boolean;
@@ -16,6 +16,7 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
   const [columnsPerPage, setColumnsPerPage] = useState(1);
   const [pageWidth, setPageWidth] = useState(8.5);
   const [pageHeight, setPageHeight] = useState(11);
+  const [printUnit, setPrintUnit] = useState<Unit>("in");
 
   useEffect(() => {
     if (!open) {
@@ -29,6 +30,7 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
     setColumnsPerPage(defaults.layout.columnsPerPage);
     setPageWidth(defaults.print.width);
     setPageHeight(defaults.print.height);
+    setPrintUnit(defaults.print.unit);
   }, [defaultName, open]);
 
   useEffect(() => {
@@ -128,9 +130,9 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
             <label className="block">
-              <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page width (in)</span>
+              <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page width</span>
               <input
                 className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                 min={1}
@@ -142,7 +144,7 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page height (in)</span>
+              <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page height</span>
               <input
                 className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                 min={1}
@@ -151,6 +153,23 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
                 type="number"
                 value={pageHeight}
               />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-ink-950/70">Unit</span>
+              <select
+                className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                onChange={(event) => {
+                  const nextUnit = event.target.value as Unit;
+                  setPageWidth((current) => convertPrintMeasurement(current, printUnit, nextUnit));
+                  setPageHeight((current) => convertPrintMeasurement(current, printUnit, nextUnit));
+                  setPrintUnit(nextUnit);
+                }}
+                value={printUnit}
+              >
+                <option value="in">Inches</option>
+                <option value="cm">Centimeters</option>
+              </select>
             </label>
           </div>
         </div>
@@ -176,7 +195,7 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
                     presetId: null,
                     width: pageWidth,
                     height: pageHeight,
-                    unit: "in",
+                    unit: printUnit,
                   },
                   layout: {
                     rowsPerPage,
