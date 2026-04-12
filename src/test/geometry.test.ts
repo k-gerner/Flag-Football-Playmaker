@@ -1,15 +1,16 @@
 import { clientToBoardPoint, getPdfFormat, getPreviewAspectRatio } from "../lib/geometry";
+import { BOARD_LAYOUT } from "../lib/playbook";
 
 describe("geometry helpers", () => {
   it("converts screen coordinates into board coordinates", () => {
     expect(
-      clientToBoardPoint(500, 700, {
+      clientToBoardPoint(600, 400, {
         left: 0,
         top: 0,
-        width: 1000,
-        height: 1400,
+        width: 1200,
+        height: 800,
       }),
-    ).toEqual({ x: 50, y: 70 });
+    ).toEqual({ x: BOARD_LAYOUT.width / 2, y: BOARD_LAYOUT.height / 2 });
   });
 
   it("calculates preview ratio and pdf sizing from print settings", () => {

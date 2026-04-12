@@ -374,6 +374,7 @@ function App() {
               onApplyPreset={handleApplyPreset}
               onDeleteSelectedPath={handleDeleteSelectedPath}
               onExportPdf={handleExportPdf}
+              onFieldThemeChange={(fieldTheme) => updateActivePlay((play) => ({ ...play, fieldTheme }))}
               onNameChange={(name) => updateActivePlay((play) => ({ ...play, name }))}
               onNotesChange={(notes) => updateActivePlay((play) => ({ ...play, notes }))}
               onPlayerCountChange={handlePlayerCountChange}

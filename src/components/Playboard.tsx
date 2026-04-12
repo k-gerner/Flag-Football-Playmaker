@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { clientToBoardPoint } from "../lib/geometry";
-import { BOARD_LAYOUT, buildPolylinePoints, clampPoint } from "../lib/playbook";
+import { BOARD_LAYOUT, FIELD_THEMES, buildPolylinePoints, clampPoint } from "../lib/playbook";
 import type { DraftPath, PlayDocument, Point, ToolMode } from "../lib/types";
 
 interface PlayboardProps {
@@ -30,6 +30,7 @@ type DragState =
 
 const markerId = "play-arrow";
 const motionMarkerId = "motion-arrow";
+const YARD_MARKERS = [0, 5, 10, 15];
 
 function getMidpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -58,6 +59,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
 ) {
   const localRef = useRef<SVGSVGElement | null>(null);
   const [dragState, setDragState] = useState<DragState>(null);
+  const theme = FIELD_THEMES[play.fieldTheme];
 
   useEffect(() => {
     if (!interactive || !dragState) {
@@ -135,8 +137,11 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
   };
 
   return (
-    <div className="field-card relative overflow-hidden rounded-[36px] border border-white/20 shadow-panel">
-      <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/25 to-transparent" />
+    <div
+      className="relative overflow-hidden rounded-[36px] border border-white/20 shadow-panel"
+      style={{ background: theme.cardBackground }}
+    >
+      <div className="absolute inset-x-0 top-0 h-28" style={{ background: theme.overlay }} />
       <svg
         aria-label={accessibleLabel ?? undefined}
         className="relative z-10 block h-auto w-full"
@@ -157,50 +162,49 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
       >
         <defs>
           <marker id={markerId} markerHeight="6" markerWidth="6" orient="auto-start-reverse" refX="5" refY="3">
-            <path d="M 0 0 L 6 3 L 0 6 z" fill="#fff8e7" />
+            <path d="M 0 0 L 6 3 L 0 6 z" fill={theme.route} />
           </marker>
           <marker id={motionMarkerId} markerHeight="6" markerWidth="6" orient="auto-start-reverse" refX="5" refY="3">
-            <path d="M 0 0 L 6 3 L 0 6 z" fill="#f4b16d" />
+            <path d="M 0 0 L 6 3 L 0 6 z" fill={theme.motion} />
           </marker>
         </defs>
 
-        <rect fill="rgba(255,255,255,0.02)" height={BOARD_LAYOUT.height} width={BOARD_LAYOUT.width} x="0" y="0" />
-        {Array.from({ length: 13 }).map((_, index) => {
-          const y = 12 + index * 10;
-          const isScrimmage = Math.abs(y - BOARD_LAYOUT.lineOfScrimmageY) < 1;
+        <rect
+          data-testid={enableTestIds ? "field-surface" : undefined}
+          fill={theme.surface}
+          height={BOARD_LAYOUT.height}
+          width={BOARD_LAYOUT.width}
+          x="0"
+          y="0"
+        />
+        {YARD_MARKERS.map((yards) => {
+          const y = BOARD_LAYOUT.lineOfScrimmageY - (yards / 15) * BOARD_LAYOUT.yardsInFront;
+          const isScrimmage = yards === 0;
           return (
-            <g key={y}>
+            <g key={yards}>
               <line
                 opacity={isScrimmage ? 0.95 : 0.3}
-                stroke={isScrimmage ? "#ffe5b8" : "rgba(255,255,255,0.65)"}
+                stroke={isScrimmage ? theme.accent : theme.grid}
                 strokeDasharray={isScrimmage ? undefined : "1.4 3"}
                 strokeWidth={isScrimmage ? 1.2 : 0.35}
-                x1="5"
-                x2="95"
+                x1="10"
+                x2={BOARD_LAYOUT.width - 5}
                 y1={y}
                 y2={y}
               />
-              {!isScrimmage ? (
-                <text fill="rgba(255,255,255,0.4)" fontSize="2.8" x="3.4" y={y + 1}>
-                  {index * 5}
-                </text>
-              ) : null}
+              <text
+                fill={isScrimmage ? theme.scrimmage : theme.gridText}
+                fontSize="3"
+                fontWeight={isScrimmage ? "700" : "600"}
+                textAnchor="end"
+                x="8"
+                y={y + 1}
+              >
+                {yards}
+              </text>
             </g>
           );
         })}
-
-        <line
-          stroke="#fff4d6"
-          strokeLinecap="round"
-          strokeWidth="1.6"
-          x1="6"
-          x2="94"
-          y1={BOARD_LAYOUT.lineOfScrimmageY}
-          y2={BOARD_LAYOUT.lineOfScrimmageY}
-        />
-        <text fill="#fff4d6" fontSize="3.2" fontWeight="700" x="6" y={BOARD_LAYOUT.lineOfScrimmageY - 2}>
-          Line of scrimmage
-        </text>
 
         {play.handoffs.map((handoff) => {
           const from = play.players.find((player) => player.id === handoff.fromPlayerId);
@@ -213,7 +217,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
           return (
             <g data-testid={enableTestIds ? `handoff-${handoff.id}` : undefined} key={handoff.id}>
               <line
-                stroke="#f7d8ab"
+                stroke={theme.handoff}
                 strokeDasharray="3 2"
                 strokeLinecap="round"
                 strokeWidth="1.2"
@@ -222,8 +226,8 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                 y1={from.y}
                 y2={to.y}
               />
-              <circle cx={midpoint.x} cy={midpoint.y} fill="#10231a" r="3.4" stroke="#f7d8ab" strokeWidth="0.6" />
-              <text fill="#f7d8ab" fontSize="2.8" fontWeight="700" textAnchor="middle" x={midpoint.x} y={midpoint.y + 1}>
+              <circle cx={midpoint.x} cy={midpoint.y} fill={theme.handoffFill} r="3.4" stroke={theme.handoff} strokeWidth="0.6" />
+              <text fill={theme.handoff} fontSize="2.8" fontWeight="700" textAnchor="middle" x={midpoint.x} y={midpoint.y + 1}>
                 H
               </text>
             </g>
@@ -253,7 +257,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                   }
                 }}
                 points={points}
-                stroke={path.kind === "route" ? "#fff8e7" : "#f4b16d"}
+                stroke={path.kind === "route" ? theme.route : theme.motion}
                 strokeDasharray={path.kind === "motion" ? "3 2" : undefined}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -262,22 +266,22 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
               />
               {selected && interactive && tool === "select"
                 ? path.points.map((point, pointIndex) => (
-                    <circle
-                      cx={point.x}
-                      cy={point.y}
-                      data-stop-board-click="true"
-                      fill="#fff4d6"
-                      key={`${path.id}-${pointIndex}`}
-                      onPointerDown={(event: ReactPointerEvent<SVGCircleElement>) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setDragState({ kind: "point", pathId: path.id, pointIndex });
-                      }}
-                      r="1.8"
-                      stroke="#10231a"
-                      strokeWidth="0.6"
-                    />
-                  ))
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    data-stop-board-click="true"
+                    fill={theme.handleFill}
+                    key={`${path.id}-${pointIndex}`}
+                    onPointerDown={(event: ReactPointerEvent<SVGCircleElement>) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setDragState({ kind: "point", pathId: path.id, pointIndex });
+                    }}
+                    r="1.8"
+                    stroke={theme.handleStroke}
+                    strokeWidth="0.6"
+                  />
+                ))
                 : null}
             </g>
           );
@@ -296,7 +300,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
               fill="none"
               markerEnd={`url(#${draftPath.kind === "route" ? markerId : motionMarkerId})`}
               points={points}
-              stroke={draftPath.kind === "route" ? "#fff8e7" : "#f4b16d"}
+              stroke={draftPath.kind === "route" ? theme.route : theme.motion}
               strokeDasharray={draftPath.kind === "motion" ? "3 2" : undefined}
               strokeLinecap="round"
               strokeLinejoin="round"

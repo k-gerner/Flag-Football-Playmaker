@@ -1,5 +1,5 @@
-import { PRINT_PRESETS } from "../lib/playbook";
-import type { PlayDocument, PlayerCount, PlayerToken, RoutePath } from "../lib/types";
+import { FIELD_THEMES, PRINT_PRESETS } from "../lib/playbook";
+import type { FieldTheme, PlayDocument, PlayerCount, PlayerToken, RoutePath } from "../lib/types";
 
 interface InspectorPanelProps {
   play: PlayDocument;
@@ -9,6 +9,7 @@ interface InspectorPanelProps {
   onNameChange: (name: string) => void;
   onNotesChange: (notes: string) => void;
   onPlayerCountChange: (count: PlayerCount) => void;
+  onFieldThemeChange: (theme: FieldTheme) => void;
   onPlayerUpdate: (playerId: string, changes: Partial<Pick<PlayerToken, "label" | "color">>) => void;
   onDeleteSelectedPath: () => void;
   onApplyPreset: (presetId: string) => void;
@@ -24,6 +25,7 @@ export function InspectorPanel({
   onNameChange,
   onNotesChange,
   onPlayerCountChange,
+  onFieldThemeChange,
   onPlayerUpdate,
   onDeleteSelectedPath,
   onApplyPreset,
@@ -67,6 +69,21 @@ export function InspectorPanel({
               placeholder="Formation reminders, cadence, motion timing..."
               value={play.notes}
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold text-ink-950/70">Field style</span>
+            <select
+              className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+              onChange={(event) => onFieldThemeChange(event.target.value as FieldTheme)}
+              value={play.fieldTheme}
+            >
+              {Object.entries(FIELD_THEMES).map(([value, theme]) => (
+                <option key={value} value={value}>
+                  {theme.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </section>

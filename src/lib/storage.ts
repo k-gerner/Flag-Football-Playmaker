@@ -1,4 +1,4 @@
-import { createPlayDocument } from "./playbook";
+import { createPlayDocument, migratePlayDocument } from "./playbook";
 import type { PlayDocument } from "./types";
 
 export const STORAGE_KEY = "flag-football-playmaker::plays";
@@ -18,7 +18,9 @@ export function parsePlaybook(input: string | null): PlayDocument[] {
       return [createPlayDocument()];
     }
 
-    const cleaned = parsed.filter((play) => typeof play?.id === "string" && Array.isArray(play.players));
+    const cleaned = parsed
+      .filter((play) => typeof play?.id === "string" && Array.isArray(play.players))
+      .map((play) => migratePlayDocument(play));
     return cleaned.length > 0 ? cleaned : [createPlayDocument()];
   } catch {
     return [createPlayDocument()];

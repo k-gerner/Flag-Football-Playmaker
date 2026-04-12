@@ -2,6 +2,7 @@ export type PlayerCount = 5 | 7 | 8;
 export type ToolMode = "select" | "route" | "motion" | "handoff";
 export type RouteKind = "route" | "motion";
 export type Unit = "in" | "mm";
+export type FieldTheme = "white" | "green";
 
 export interface Point {
   x: number;
@@ -50,6 +51,7 @@ export interface PlayDocument {
   name: string;
   playerCount: PlayerCount;
   fieldLayout: FieldLayout;
+  fieldTheme: FieldTheme;
   players: PlayerToken[];
   paths: RoutePath[];
   handoffs: HandoffMark[];
