@@ -95,6 +95,7 @@ export function AppShell({ backend }: AppShellProps) {
   const activePlay = activeSetPlays.find((play) => play.id === activePlayId) ?? activeSetPlays[0] ?? null;
   const selectedPlayer = activePlay?.players.find((player) => player.id === selectedPlayerId) ?? null;
   const selectedPath = activePlay?.paths.find((path) => path.id === selectedPathId) ?? null;
+  const hasPlaySets = playSets.length > 0;
 
   const userId = authState.user?.id ?? null;
 
@@ -341,23 +342,16 @@ export function AppShell({ backend }: AppShellProps) {
     }
 
     const newPlaySet = createPlaySet(`Play Set ${playSets.length + 1}`);
-    const firstPlay = createPlayDocument({
-      playSetId: newPlaySet.id,
-      playNumber: 1,
-      settings: newPlaySet.settings,
-    });
 
     try {
       const savedPlaySet = await backend.savePlaySet(userId, newPlaySet);
-      const savedPlay = await backend.savePlay(firstPlay);
-
       setPlaySets((current) => [savedPlaySet, ...current]);
       setPlaysBySetId((current) => ({
         ...current,
-        [savedPlaySet.id]: [savedPlay],
+        [savedPlaySet.id]: [],
       }));
       setActivePlaySetId(savedPlaySet.id);
-      setActivePlayId(savedPlay.id);
+      setActivePlayId(null);
       clearTransientState();
     } catch (error) {
       setWorkspaceError(getErrorMessage(error));
@@ -787,19 +781,31 @@ export function AppShell({ backend }: AppShellProps) {
           </div>
 
           <main className="flex min-w-0 flex-col gap-5">
-            <Toolbar
-              draftPath={draftPath}
-              onCancelDraft={handleCancelDraft}
-              onFinishDraft={handleFinishDraft}
-              onToolChange={(nextTool) => {
-                setTool(nextTool);
-                setHandoffSourceId(null);
-                if (nextTool === "select") {
-                  setDraftPath(null);
-                }
-              }}
-              tool={tool}
-            />
+            {activePlay ? (
+              <Toolbar
+                draftPath={draftPath}
+                onCancelDraft={handleCancelDraft}
+                onFinishDraft={handleFinishDraft}
+                onToolChange={(nextTool) => {
+                  setTool(nextTool);
+                  setHandoffSourceId(null);
+                  if (nextTool === "select") {
+                    setDraftPath(null);
+                  }
+                }}
+                tool={tool}
+              />
+            ) : (
+              <section className="glass-panel rounded-[28px] border border-white/70 px-5 py-4 shadow-panel">
+                <p className="text-sm font-semibold text-ink-950/80">
+                  {activePlaySet
+                    ? `Create a play in ${activePlaySet.name} to unlock the field tools and start drawing.`
+                    : hasPlaySets
+                      ? "Open an existing Play Set or create a new one before you build a play."
+                      : "Create a new Play Set before you build your first play."}
+                </p>
+              </section>
+            )}
 
             {activePlaySet && activePlay ? (
               <section className="grid gap-4 rounded-[38px] bg-ink-950/80 p-4 shadow-panel sm:p-5">
@@ -846,19 +852,39 @@ export function AppShell({ backend }: AppShellProps) {
                   tool={tool}
                 />
               </section>
+            ) : activePlaySet ? (
+              <section className="grid gap-4 rounded-[38px] bg-ink-950/80 p-8 text-center text-white/80 shadow-panel">
+                <p className="font-display text-2xl font-bold text-white">Create your first play</p>
+                <p className="mx-auto max-w-2xl text-sm text-white/70">
+                  {activePlaySet.name} is ready. Add a play to start drawing formations, routes, and wristband cards.
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    className="rounded-full bg-ember-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-ember-500/90"
+                    onClick={handleCreatePlay}
+                    type="button"
+                  >
+                    Create new play
+                  </button>
+                </div>
+              </section>
             ) : (
               <section className="grid gap-4 rounded-[38px] bg-ink-950/80 p-8 text-center text-white/80 shadow-panel">
-                <p className="font-display text-2xl font-bold text-white">No Play Set yet</p>
-                <p className="mx-auto max-w-2xl text-sm text-white/70">
-                  Create your first Play Set to group plays by team or install package, then build cloud-saved wristband exports around it.
+                <p className="font-display text-2xl font-bold text-white">
+                  {hasPlaySets ? "Open a Play Set before you create a play" : "Start with a Play Set"}
                 </p>
-                <div>
+                <p className="mx-auto max-w-2xl text-sm text-white/70">
+                  {hasPlaySets
+                    ? "Choose a Play Set from the library or create a fresh one before you start building plays."
+                    : "Create your first Play Set to group plays by team or install package, then build cloud-saved wristband exports around it."}
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3">
                   <button
                     className="rounded-full bg-ember-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-ember-500/90"
                     onClick={handleCreatePlaySet}
                     type="button"
                   >
-                    Create your first Play Set
+                    {hasPlaySets ? "Create a new Play Set" : "Create your first Play Set"}
                   </button>
                 </div>
               </section>

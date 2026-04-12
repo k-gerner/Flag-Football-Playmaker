@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { AppShell } from "../App";
 import { createMemoryBackend, createSeededMemoryBackend } from "../lib/backend";
+import { createPlaySet } from "../lib/playbook";
 
 async function mockBoardRect() {
   const board = await screen.findByTestId("playboard");
@@ -45,6 +46,37 @@ describe("AppShell", () => {
     });
 
     expect(screen.getAllByTestId(/player-/)).toHaveLength(5);
+  });
+
+  it("prompts for a play set before creating a play", async () => {
+    const playSet = createPlaySet("Play Set 1");
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [playSet],
+          initialPlays: [],
+        })}
+      />,
+    );
+
+    expect(await screen.findByText("Create a play in Play Set 1 to unlock the field tools and start drawing.")).toBeInTheDocument();
+    expect(screen.getByText("Create your first play")).toBeInTheDocument();
+    expect(screen.queryByTestId("playboard")).not.toBeInTheDocument();
+  });
+
+  it("creates a play set without auto-creating a play", async () => {
+    render(<AppShell backend={createMemoryBackend({ initialPlaySets: [], initialPlays: [] })} />);
+
+    expect(await screen.findByText("Start with a Play Set")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create your first Play Set" }));
+
+    expect(await screen.findByText("Create your first play")).toBeInTheDocument();
+    expect(screen.queryByTestId("playboard")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create new play" }));
+
+    expect(await screen.findByTestId("playboard")).toBeInTheDocument();
   });
 
   it("creates a route and keeps it anchored when the player moves", async () => {
