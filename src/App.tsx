@@ -3,6 +3,7 @@ import { AuthPanel } from "./components/AuthPanel";
 import { InspectorPanel } from "./components/InspectorPanel";
 import { PlayLibrary } from "./components/PlayLibrary";
 import { Playboard } from "./components/Playboard";
+import { PlaySetSettingsModal } from "./components/PlaySetSettingsModal";
 import { Toolbar } from "./components/Toolbar";
 import { createMemoryBackend, supabaseBackend, type AppBackend } from "./lib/backend";
 import { exportPlaySetToPdf, exportPlayToPdf } from "./lib/pdf";
@@ -80,6 +81,7 @@ export function AppShell({ backend }: AppShellProps) {
   const [activePlaySetId, setActivePlaySetId] = useState<string | null>(null);
   const [activePlayId, setActivePlayId] = useState<string | null>(null);
   const [copyTargetPlaySetId, setCopyTargetPlaySetId] = useState("");
+  const [isPlaySetSettingsOpen, setIsPlaySetSettingsOpen] = useState(false);
   const [tool, setTool] = useState<ToolMode>("select");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
@@ -261,6 +263,12 @@ export function AppShell({ backend }: AppShellProps) {
 
     setCopyTargetPlaySetId("");
   }, [copyTargetPlaySetId, playSets]);
+
+  useEffect(() => {
+    if (!activePlaySet) {
+      setIsPlaySetSettingsOpen(false);
+    }
+  }, [activePlaySet]);
 
   const setScopedPlaySets = useMemo(() => playSets, [playSets]);
 
@@ -762,6 +770,7 @@ export function AppShell({ backend }: AppShellProps) {
           <div className="min-h-[720px] min-w-0 xl:sticky xl:top-6">
             <PlayLibrary
               activePlayId={activePlay?.id ?? null}
+              activePlaySet={activePlaySet}
               activePlaySetId={activePlaySet?.id ?? null}
               onCreatePlay={handleCreatePlay}
               onCreatePlaySet={handleCreatePlaySet}
@@ -770,6 +779,7 @@ export function AppShell({ backend }: AppShellProps) {
               onDuplicatePlay={handleDuplicatePlay}
               onDuplicatePlaySet={handleDuplicatePlaySet}
               onMovePlay={handleMovePlay}
+              onOpenPlaySetSettings={() => setIsPlaySetSettingsOpen(true)}
               onSelectPlay={(playId) => {
                 setActivePlayId(playId);
                 clearTransientState();
@@ -895,98 +905,10 @@ export function AppShell({ backend }: AppShellProps) {
             <InspectorPanel
               copyTargetPlaySetId={copyTargetPlaySetId}
               isDraftingPath={Boolean(draftPath)}
-              onApplyPreset={(presetId) => {
-                if (!activePlaySet) {
-                  return;
-                }
-
-                if (presetId === "custom") {
-                  handlePlaySetSettingsCommit({
-                    ...activePlaySet.settings,
-                    print: {
-                      ...activePlaySet.settings.print,
-                      presetId: null,
-                    },
-                  });
-                  return;
-                }
-
-                const preset = PRINT_PRESETS.find((item) => item.id === presetId);
-                if (!preset) {
-                  return;
-                }
-
-                handlePlaySetSettingsCommit({
-                  ...activePlaySet.settings,
-                  print: {
-                    presetId: preset.id,
-                    width: preset.width,
-                    height: preset.height,
-                    unit: preset.unit,
-                  },
-                  layout: {
-                    ...activePlaySet.settings.layout,
-                    cardAspectRatio: Number((preset.width / preset.height).toFixed(3)),
-                  },
-                });
-              }}
-              onBackgroundColorChange={(backgroundColor) => {
-                if (!activePlaySet) {
-                  return;
-                }
-
-                handlePlaySetSettingsCommit({
-                  ...activePlaySet.settings,
-                  field: {
-                    ...activePlaySet.settings.field,
-                    backgroundColor,
-                  },
-                });
-              }}
               onCopyPlayToSet={handleCopyPlayToSet}
               onCopyTargetPlaySetChange={setCopyTargetPlaySetId}
               onDeleteSelectedPath={handleDeleteSelectedPath}
               onExportPlay={handleExportPlay}
-              onExportPlaySet={handleExportPlaySet}
-              onFieldThemeChange={(theme) => {
-                if (!activePlaySet) {
-                  return;
-                }
-
-                handlePlaySetSettingsCommit({
-                  ...activePlaySet.settings,
-                  field: {
-                    ...activePlaySet.settings.field,
-                    theme,
-                  },
-                });
-              }}
-              onLayoutSettingChange={(changes) => {
-                if (!activePlaySet) {
-                  return;
-                }
-
-                const nextLayout = {
-                  ...activePlaySet.settings.layout,
-                  ...changes,
-                };
-                const ratio =
-                  typeof nextLayout.cardAspectRatio === "number" && nextLayout.cardAspectRatio > 0
-                    ? nextLayout.cardAspectRatio
-                    : activePlaySet.settings.layout.cardAspectRatio;
-
-                handlePlaySetSettingsCommit({
-                  ...activePlaySet.settings,
-                  layout: {
-                    ...nextLayout,
-                    cardAspectRatio: Number(ratio.toFixed(3)),
-                  },
-                  print: {
-                    ...activePlaySet.settings.print,
-                    height: Number((activePlaySet.settings.print.width / ratio).toFixed(2)),
-                  },
-                });
-              }}
               onPlayDisplaySettingsChange={(displaySettings) => {
                 updateActivePlay((play) => ({
                   ...play,
@@ -995,60 +917,7 @@ export function AppShell({ backend }: AppShellProps) {
               }}
               onPlayNameChange={(name) => updateActivePlay((play) => ({ ...play, name }))}
               onPlayNotesChange={(notes) => updateActivePlay((play) => ({ ...play, notes }))}
-              onPlaySetNameChange={(name) =>
-                updateActivePlaySet((playSet) => ({
-                  ...playSet,
-                  name,
-                }))
-              }
-              onPlayerCountChange={(count) => {
-                if (!activePlaySet) {
-                  return;
-                }
-
-                const nextSettings = normalizePlaySetSettings({
-                  ...activePlaySet.settings,
-                  roster: {
-                    ...activePlaySet.settings.roster,
-                    playerCount: count,
-                  },
-                });
-                const nextPlaySet = touchPlaySet({
-                  ...activePlaySet,
-                  settings: nextSettings,
-                });
-                const remappedPlays = renumberPlays(
-                  activeSetPlays.map((play) => remapFormation(play, count)),
-                );
-
-                setPlaySets((current) => current.map((item) => (item.id === nextPlaySet.id ? nextPlaySet : item)));
-                setPlaysBySetId((current) => ({
-                  ...current,
-                  [nextPlaySet.id]: remappedPlays,
-                }));
-                clearTransientState();
-                schedulePlaySetSave(nextPlaySet);
-                void persistPlaysImmediately(remappedPlays);
-              }}
               onPlayerUpdate={handlePlayerUpdate}
-              onPrintSettingChange={(changes) => {
-                if (!activePlaySet) {
-                  return;
-                }
-
-                const nextPrint = {
-                  ...activePlaySet.settings.print,
-                  ...changes,
-                };
-                handlePlaySetSettingsCommit({
-                  ...activePlaySet.settings,
-                  print: nextPrint,
-                  layout: {
-                    ...activePlaySet.settings.layout,
-                    cardAspectRatio: Number((nextPrint.width / nextPrint.height).toFixed(3)),
-                  },
-                });
-              }}
               play={activePlay}
               playSet={activePlaySet}
               playSets={playSets}
@@ -1058,6 +927,151 @@ export function AppShell({ backend }: AppShellProps) {
           </div>
         </div>
       </div>
+
+      <PlaySetSettingsModal
+        onApplyPreset={(presetId) => {
+          if (!activePlaySet) {
+            return;
+          }
+
+          if (presetId === "custom") {
+            handlePlaySetSettingsCommit({
+              ...activePlaySet.settings,
+              print: {
+                ...activePlaySet.settings.print,
+                presetId: null,
+              },
+            });
+            return;
+          }
+
+          const preset = PRINT_PRESETS.find((item) => item.id === presetId);
+          if (!preset) {
+            return;
+          }
+
+          handlePlaySetSettingsCommit({
+            ...activePlaySet.settings,
+            print: {
+              presetId: preset.id,
+              width: preset.width,
+              height: preset.height,
+              unit: preset.unit,
+            },
+            layout: {
+              ...activePlaySet.settings.layout,
+              cardAspectRatio: Number((preset.width / preset.height).toFixed(3)),
+            },
+          });
+        }}
+        onBackgroundColorChange={(backgroundColor) => {
+          if (!activePlaySet) {
+            return;
+          }
+
+          handlePlaySetSettingsCommit({
+            ...activePlaySet.settings,
+            field: {
+              ...activePlaySet.settings.field,
+              backgroundColor,
+            },
+          });
+        }}
+        onClose={() => setIsPlaySetSettingsOpen(false)}
+        onExportPlaySet={handleExportPlaySet}
+        onFieldThemeChange={(theme) => {
+          if (!activePlaySet) {
+            return;
+          }
+
+          handlePlaySetSettingsCommit({
+            ...activePlaySet.settings,
+            field: {
+              ...activePlaySet.settings.field,
+              theme,
+            },
+          });
+        }}
+        onLayoutSettingChange={(changes) => {
+          if (!activePlaySet) {
+            return;
+          }
+
+          const nextLayout = {
+            ...activePlaySet.settings.layout,
+            ...changes,
+          };
+          const ratio =
+            typeof nextLayout.cardAspectRatio === "number" && nextLayout.cardAspectRatio > 0
+              ? nextLayout.cardAspectRatio
+              : activePlaySet.settings.layout.cardAspectRatio;
+
+          handlePlaySetSettingsCommit({
+            ...activePlaySet.settings,
+            layout: {
+              ...nextLayout,
+              cardAspectRatio: Number(ratio.toFixed(3)),
+            },
+            print: {
+              ...activePlaySet.settings.print,
+              height: Number((activePlaySet.settings.print.width / ratio).toFixed(2)),
+            },
+          });
+        }}
+        onPlaySetNameChange={(name) =>
+          updateActivePlaySet((playSet) => ({
+            ...playSet,
+            name,
+          }))
+        }
+        onPlayerCountChange={(count) => {
+          if (!activePlaySet) {
+            return;
+          }
+
+          const nextSettings = normalizePlaySetSettings({
+            ...activePlaySet.settings,
+            roster: {
+              ...activePlaySet.settings.roster,
+              playerCount: count,
+            },
+          });
+          const nextPlaySet = touchPlaySet({
+            ...activePlaySet,
+            settings: nextSettings,
+          });
+          const remappedPlays = renumberPlays(activeSetPlays.map((play) => remapFormation(play, count)));
+
+          setPlaySets((current) => current.map((item) => (item.id === nextPlaySet.id ? nextPlaySet : item)));
+          setPlaysBySetId((current) => ({
+            ...current,
+            [nextPlaySet.id]: remappedPlays,
+          }));
+          clearTransientState();
+          schedulePlaySetSave(nextPlaySet);
+          void persistPlaysImmediately(remappedPlays);
+        }}
+        onPrintSettingChange={(changes) => {
+          if (!activePlaySet) {
+            return;
+          }
+
+          const nextPrint = {
+            ...activePlaySet.settings.print,
+            ...changes,
+          };
+          handlePlaySetSettingsCommit({
+            ...activePlaySet.settings,
+            print: nextPrint,
+            layout: {
+              ...activePlaySet.settings.layout,
+              cardAspectRatio: Number((nextPrint.width / nextPrint.height).toFixed(3)),
+            },
+          });
+        }}
+        open={isPlaySetSettingsOpen}
+        playSet={activePlaySet}
+      />
 
       {activePlaySet ? (
         <div className="absolute -left-[99999px] top-0 h-0 w-0 overflow-hidden" aria-hidden="true">

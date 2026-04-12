@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { IoMdSettings } from "react-icons/io";
 import type { PlayDocument, PlaySet } from "../lib/types";
 
 interface PlayLibraryProps {
   playSets: PlaySet[];
+  activePlaySet: PlaySet | null;
   activePlaySetId: string | null;
   plays: PlayDocument[];
   activePlayId: string | null;
@@ -10,6 +12,7 @@ interface PlayLibraryProps {
   onSelectPlaySet: (playSetId: string) => void;
   onDuplicatePlaySet: (playSetId: string) => void;
   onDeletePlaySet: (playSetId: string) => void;
+  onOpenPlaySetSettings: () => void;
   onCreatePlay: () => void;
   onSelectPlay: (playId: string) => void;
   onDuplicatePlay: (playId: string) => void;
@@ -78,6 +81,7 @@ function CreateCard({ title, description, onClick, disabled = false, testId, rai
 
 export function PlayLibrary({
   playSets,
+  activePlaySet,
   activePlaySetId,
   plays,
   activePlayId,
@@ -85,13 +89,13 @@ export function PlayLibrary({
   onSelectPlaySet,
   onDuplicatePlaySet,
   onDeletePlaySet,
+  onOpenPlaySetSettings,
   onCreatePlay,
   onSelectPlay,
   onDuplicatePlay,
   onDeletePlay,
   onMovePlay,
 }: PlayLibraryProps) {
-  const activePlaySet = playSets.find((playSet) => playSet.id === activePlaySetId) ?? null;
   const [isPlaySetPickerOpen, setIsPlaySetPickerOpen] = useState(false);
   const [canScrollPlaySetsLeft, setCanScrollPlaySetsLeft] = useState(false);
   const [canScrollPlaySetsRight, setCanScrollPlaySetsRight] = useState(false);
@@ -157,8 +161,22 @@ export function PlayLibrary({
   return (
     <aside className="glass-panel flex h-full min-w-0 flex-col overflow-hidden rounded-[28px] border border-white/70 p-4 shadow-panel">
       <div className="mb-4">
-        <p className="font-display text-lg font-bold text-ink-950">Play Sets</p>
-        <p className="text-sm text-ink-950/65">Separate wristband groupings by opponent, team, or install.</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-display text-lg font-bold text-ink-950">Play Sets</p>
+            <p className="text-sm text-ink-950/65">Separate wristband groupings by opponent, team, or install.</p>
+          </div>
+          <button
+            aria-label="Open play set settings"
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-ink-950/15 bg-white/75 px-3 text-sm font-semibold text-ink-950 transition hover:border-ember-500/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={!activePlaySet}
+            onClick={onOpenPlaySetSettings}
+            type="button"
+          >
+            <IoMdSettings aria-hidden="true" className="h-4 w-4 shrink-0" />
+            <span>Settings</span>
+          </button>
+        </div>
       </div>
 
       <button
@@ -212,11 +230,10 @@ export function PlayLibrary({
                 const active = playSet.id === activePlaySetId;
                 return (
                   <article
-                    className={`${tileClassName} ${
-                      active
+                    className={`${tileClassName} ${active
                         ? "border-ember-500 bg-ember-300/15 shadow-sm"
                         : "border-black/5 bg-white/70 hover:border-ember-500/30"
-                    }`}
+                      }`}
                     data-play-set-rail-item="true"
                     data-testid={`play-set-card-${playSet.id}`}
                     key={playSet.id}
@@ -289,11 +306,10 @@ export function PlayLibrary({
               const active = play.id === activePlayId;
               return (
                 <article
-                  className={`${tileClassName} ${
-                    active
+                  className={`${tileClassName} ${active
                       ? "border-ember-500 bg-ember-300/15 shadow-sm"
                       : "border-black/5 bg-white/70 hover:border-ember-500/30"
-                  }`}
+                    }`}
                   key={play.id}
                 >
                   <button className="block w-full flex-1 text-left" onClick={() => onSelectPlay(play.id)} type="button">

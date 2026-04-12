@@ -42,6 +42,8 @@ describe("AppShell", () => {
   it("switches formations from the inspector", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
+
     const select = await screen.findByDisplayValue("7 players");
     await act(async () => {
       fireEvent.change(select, { target: { value: "5" } });
@@ -119,6 +121,23 @@ describe("AppShell", () => {
     expect(screen.getByTestId("play-set-picker-trigger")).toHaveTextContent("Play Set 1");
   });
 
+  it("opens play set settings in a modal from the gear button", async () => {
+    const playSet = createPlaySet("Play Set 1");
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [playSet],
+          initialPlays: [],
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
+
+    expect(await screen.findByTestId("play-set-settings-modal")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Play Set 1")).toBeInTheDocument();
+  });
+
   it("shows overlay arrows for an overflowing play set rail and scrolls by one tile", async () => {
     const playSets = ["Play Set 1", "Play Set 2", "Play Set 3"].map((name, index) => ({
       ...createPlaySet(name),
@@ -129,6 +148,7 @@ describe("AppShell", () => {
     render(
       <PlayLibrary
         activePlayId={null}
+        activePlaySet={playSets[0]}
         activePlaySetId={playSets[0].id}
         onCreatePlay={() => undefined}
         onCreatePlaySet={() => undefined}
@@ -137,6 +157,7 @@ describe("AppShell", () => {
         onDuplicatePlay={() => undefined}
         onDuplicatePlaySet={() => undefined}
         onMovePlay={() => undefined}
+        onOpenPlaySetSettings={() => undefined}
         onSelectPlay={() => undefined}
         onSelectPlaySet={() => undefined}
         playSets={playSets}
@@ -195,7 +216,7 @@ describe("AppShell", () => {
 
   it("creates a route and keeps it anchored when the player moves", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
-    await screen.findByDisplayValue("7 players");
+    await screen.findByTestId("playboard");
     const board = await mockBoardRect();
 
     fireEvent.click(screen.getByRole("button", { name: "Route" }));
@@ -222,6 +243,7 @@ describe("AppShell", () => {
 
     expect(await screen.findByTestId("field-surface")).toHaveAttribute("fill", "#fffdf7");
 
+    fireEvent.click(screen.getByRole("button", { name: "Open play set settings" }));
     fireEvent.change(screen.getByDisplayValue("Whiteboard"), {
       target: { value: "green" },
     });
