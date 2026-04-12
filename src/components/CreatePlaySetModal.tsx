@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { convertPrintMeasurement, normalizePlaySetSettings } from "../lib/playbook";
+import { convertPrintMeasurement, getPlaySetCardDimensions, isLandscapeCard, normalizePlaySetSettings } from "../lib/playbook";
 import type { PlaySetSettings, PlayerCount, Unit } from "../lib/types";
 
 interface CreatePlaySetModalProps {
@@ -51,6 +51,27 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
   if (!open) {
     return null;
   }
+
+  const draftSettings = normalizePlaySetSettings({
+    roster: {
+      playerCount,
+    },
+    print: {
+      presetId: null,
+      width: pageWidth,
+      height: pageHeight,
+      unit: printUnit,
+    },
+    layout: {
+      rowsPerPage,
+      columnsPerPage,
+      playsPerPage: rowsPerPage * columnsPerPage,
+      cardAspectRatio: 1,
+    },
+  });
+  const cardDimensions = getPlaySetCardDimensions(draftSettings);
+  const previewAspect = cardDimensions.width / cardDimensions.height;
+  const hasValidCardRatio = isLandscapeCard(draftSettings);
 
   return (
     <div
@@ -172,6 +193,32 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
               </select>
             </label>
           </div>
+
+          <div>
+            <p className="mb-2 text-sm font-semibold text-ink-950/70">Card preview</p>
+            <div className="rounded-[24px] border border-dashed border-ink-950/15 bg-field-50/70 p-4">
+              <div
+                className="mx-auto rounded-2xl border border-ink-950/20 bg-[#fff8ee] shadow-sm"
+                style={{
+                  aspectRatio: `${previewAspect}`,
+                  maxWidth: "100%",
+                  minHeight: 90,
+                  width: previewAspect >= 1 ? "100%" : `${previewAspect * 100}%`,
+                }}
+              >
+                <div className="flex h-full items-center justify-center text-center text-sm text-ink-950/60">
+                  {rowsPerPage} rows × {columnsPerPage} cols
+                  <br />
+                  {cardDimensions.width} x {cardDimensions.height} {printUnit} card
+                </div>
+              </div>
+            </div>
+            {!hasValidCardRatio ? (
+              <p className="mt-2 text-sm font-semibold text-red-700">
+                Printable cards must be square or wider than tall. Adjust the page size or row/column count.
+              </p>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-6 flex justify-end gap-3">
@@ -183,27 +230,12 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
             Cancel
           </button>
           <button
-            className="rounded-full bg-ember-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-ember-500/90"
+            className="rounded-full bg-ember-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-ember-500/90 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!hasValidCardRatio}
             onClick={() =>
               onSubmit({
                 name: name.trim() || defaultName,
-                settings: {
-                  roster: {
-                    playerCount,
-                  },
-                  print: {
-                    presetId: null,
-                    width: pageWidth,
-                    height: pageHeight,
-                    unit: printUnit,
-                  },
-                  layout: {
-                    rowsPerPage,
-                    columnsPerPage,
-                    playsPerPage: rowsPerPage * columnsPerPage,
-                    cardAspectRatio: 1,
-                  },
-                },
+                settings: draftSettings,
               })
             }
             type="button"

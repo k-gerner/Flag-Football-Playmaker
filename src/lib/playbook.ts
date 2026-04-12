@@ -123,6 +123,25 @@ export function getPlaySetCardDimensions(settings: PlaySetSettings) {
   };
 }
 
+export function isLandscapeCard(settings: PlaySetSettings) {
+  const { width, height } = getPlaySetCardDimensions(settings);
+  return width >= height;
+}
+
+export function getEditorFieldLayout(settings: PlaySetSettings): FieldLayout {
+  const { width: cardWidth, height: cardHeight } = getPlaySetCardDimensions(settings);
+  const width = BOARD_LAYOUT.width;
+  const height = Number((width / Math.max(cardWidth / cardHeight, 0.1)).toFixed(3));
+
+  return {
+    width,
+    height,
+    lineOfScrimmageY: Number(((BOARD_LAYOUT.lineOfScrimmageY / BOARD_LAYOUT.height) * height).toFixed(3)),
+    yardsBehindLine: Number(((BOARD_LAYOUT.yardsBehindLine / BOARD_LAYOUT.height) * height).toFixed(3)),
+    yardsInFront: Number(((BOARD_LAYOUT.yardsInFront / BOARD_LAYOUT.height) * height).toFixed(3)),
+  };
+}
+
 export const DEFAULT_PLAY_DISPLAY_SETTINGS: PlayDisplaySettings = {
   yardMarkers: [...YARD_MARKER_OPTIONS],
   annotations: {
@@ -170,11 +189,31 @@ export function buildPolylinePoints(anchor: Point, path: RoutePath): Point[] {
   return [anchor, ...path.points];
 }
 
-export function createPlayers(playerCount: PlayerCount): PlayerToken[] {
+export function createPlayers(playerCount: PlayerCount, layout: FieldLayout = BOARD_LAYOUT): PlayerToken[] {
   return PLAYER_LAYOUTS[playerCount].map((player) => ({
     ...player,
     id: makeId("player"),
+    x: scaleValue(player.x, BOARD_LAYOUT.width, layout.width),
+    y: scaleValue(player.y, BOARD_LAYOUT.height, layout.height),
   }));
+}
+
+function scaleValue(value: number, fromMax: number, toMax: number) {
+  if (!Number.isFinite(value) || !Number.isFinite(fromMax) || !Number.isFinite(toMax) || fromMax <= 0) {
+    return value;
+  }
+
+  return Number(((value / fromMax) * toMax).toFixed(3));
+}
+
+function sameFieldLayout(a: FieldLayout, b: FieldLayout) {
+  return (
+    a.width === b.width &&
+    a.height === b.height &&
+    a.lineOfScrimmageY === b.lineOfScrimmageY &&
+    a.yardsBehindLine === b.yardsBehindLine &&
+    a.yardsInFront === b.yardsInFront
+  );
 }
 
 export function normalizePlaySetSettings(input?: Partial<PlaySetSettings> | null): PlaySetSettings {
@@ -294,14 +333,15 @@ export function createPlayDocument({
   settings,
   name,
 }: CreatePlayDocumentOptions): PlayDocument {
+  const fieldLayout = getEditorFieldLayout(settings);
   return {
     id: makeId("play"),
     playSetId,
     name: name ?? `Play ${playNumber}`,
     notes: "",
     playNumber,
-    fieldLayout: BOARD_LAYOUT,
-    players: createPlayers(settings.roster.playerCount),
+    fieldLayout,
+    players: createPlayers(settings.roster.playerCount, fieldLayout),
     paths: [],
     handoffs: [],
     displaySettings: normalizePlayDisplaySettings(),
@@ -349,6 +389,31 @@ export function clonePlayDocument(play: PlayDocument, options: ClonePlayOptions)
   };
 }
 
+export function remapPlayToFieldLayout(play: PlayDocument, nextLayout: FieldLayout): PlayDocument {
+  if (sameFieldLayout(play.fieldLayout, nextLayout)) {
+    return play;
+  }
+
+  const currentLayout = play.fieldLayout;
+
+  return touchPlay({
+    ...play,
+    fieldLayout: nextLayout,
+    players: play.players.map((player) => ({
+      ...player,
+      x: scaleValue(player.x, currentLayout.width, nextLayout.width),
+      y: scaleValue(player.y, currentLayout.height, nextLayout.height),
+    })),
+    paths: play.paths.map((path) => ({
+      ...path,
+      points: path.points.map((point) => ({
+        x: scaleValue(point.x, currentLayout.width, nextLayout.width),
+        y: scaleValue(point.y, currentLayout.height, nextLayout.height),
+      })),
+    })),
+  });
+}
+
 export function touchPlay(play: PlayDocument): PlayDocument {
   return {
     ...play,
@@ -372,22 +437,24 @@ export function renumberPlays(plays: PlayDocument[]): PlayDocument[] {
   );
 }
 
-export function remapFormation(play: PlayDocument, playerCount: PlayerCount): PlayDocument {
+export function remapFormation(play: PlayDocument, playerCount: PlayerCount, layout: FieldLayout = BOARD_LAYOUT): PlayDocument {
   return touchPlay({
     ...play,
-    players: createPlayers(playerCount),
+    fieldLayout: layout,
+    players: createPlayers(playerCount, layout),
     paths: [],
     handoffs: [],
   });
 }
 
 export function applyPlaySetSettingsToPlay(play: PlayDocument, settings: PlaySetSettings): PlayDocument {
+  const nextLayout = getEditorFieldLayout(settings);
   const currentCount = play.players.length as PlayerCount;
   if (currentCount === settings.roster.playerCount) {
-    return play;
+    return remapPlayToFieldLayout(play, nextLayout);
   }
 
-  return remapFormation(play, settings.roster.playerCount);
+  return remapFormation(play, settings.roster.playerCount, nextLayout);
 }
 
 export function normalizeStoredPlayPayload(input?: StoredPlayPayload | null): StoredPlayPayload {

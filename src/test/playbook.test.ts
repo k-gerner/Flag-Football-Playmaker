@@ -1,11 +1,15 @@
 import {
+  BOARD_LAYOUT,
   applyPlaySetSettingsToPlay,
   clonePlayDocument,
   createPlayDocument,
   createPlaySet,
+  getEditorFieldLayout,
   getPlaySetCardDimensions,
+  isLandscapeCard,
   normalizePlayDisplaySettings,
   normalizePlaySetSettings,
+  remapPlayToFieldLayout,
   renumberPlays,
 } from "../lib/playbook";
 
@@ -34,6 +38,63 @@ describe("playbook helpers", () => {
     expect(settings.print.height).toBe(10);
   });
 
+  it("flags portrait printable cards as invalid", () => {
+    const squareSettings = normalizePlaySetSettings({
+      print: {
+        presetId: null,
+        width: 3.16,
+        height: 2.08,
+        unit: "in",
+      },
+      layout: {
+        rowsPerPage: 2,
+        columnsPerPage: 3,
+        playsPerPage: 1,
+        cardAspectRatio: 1,
+      },
+    });
+    const portraitSettings = normalizePlaySetSettings({
+      print: {
+        presetId: null,
+        width: 2,
+        height: 3,
+        unit: "in",
+      },
+      layout: {
+        rowsPerPage: 1,
+        columnsPerPage: 1,
+        playsPerPage: 1,
+        cardAspectRatio: 1,
+      },
+    });
+
+    expect(isLandscapeCard(squareSettings)).toBe(true);
+    expect(isLandscapeCard(portraitSettings)).toBe(false);
+  });
+
+  it("derives the editor layout from the printable card ratio", () => {
+    const settings = normalizePlaySetSettings({
+      print: {
+        presetId: null,
+        width: 3.16,
+        height: 2.08,
+        unit: "in",
+      },
+      layout: {
+        rowsPerPage: 2,
+        columnsPerPage: 3,
+        playsPerPage: 1,
+        cardAspectRatio: 1,
+      },
+    });
+
+    const layout = getEditorFieldLayout(settings);
+
+    expect(layout.width).toBe(120);
+    expect(layout.height).toBe(120);
+    expect(layout.lineOfScrimmageY).toBe(84);
+  });
+
   it("creates a play from Play Set defaults", () => {
     const playSet = createPlaySet("Team A");
     const play = createPlayDocument({
@@ -47,6 +108,7 @@ describe("playbook helpers", () => {
     expect(play.playNumber).toBe(3);
     expect(play.players).toHaveLength(playSet.settings.roster.playerCount);
     expect(play.displaySettings).toEqual(normalizePlayDisplaySettings());
+    expect(play.fieldLayout).toEqual(getEditorFieldLayout(playSet.settings));
   });
 
   it("renumbers plays densely after reordering", () => {
@@ -122,5 +184,45 @@ describe("playbook helpers", () => {
     expect(remapped.players).toHaveLength(5);
     expect(remapped.paths).toHaveLength(0);
     expect(remapped.handoffs).toHaveLength(0);
+    expect(remapped.fieldLayout).toEqual(getEditorFieldLayout(updatedSettings));
+  });
+
+  it("rescales existing play coordinates into a new editor layout", () => {
+    const playSet = createPlaySet("Team A");
+    const play = createPlayDocument({
+      playSetId: playSet.id,
+      playNumber: 1,
+      settings: playSet.settings,
+    });
+    const remapped = remapPlayToFieldLayout(
+      {
+        ...play,
+        fieldLayout: BOARD_LAYOUT,
+        players: play.players.map((player) =>
+          player.label === "Q" ? { ...player, x: 60, y: 70 } : player,
+        ),
+        paths: [
+          {
+            id: "path-1",
+            playerId: play.players[0].id,
+            kind: "route",
+            points: [{ x: 60, y: 40 }],
+            arrowEnd: true,
+          },
+        ],
+      },
+      {
+        width: 120,
+        height: 120,
+        lineOfScrimmageY: 84,
+        yardsBehindLine: 36,
+        yardsInFront: 72,
+      },
+    );
+
+    const qb = remapped.players.find((player) => player.label === "Q");
+    expect(qb?.x).toBe(60);
+    expect(qb?.y).toBe(105);
+    expect(remapped.paths[0].points[0]).toEqual({ x: 60, y: 60 });
   });
 });

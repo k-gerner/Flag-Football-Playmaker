@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { vi } from "vitest";
 import { AppShell } from "../App";
 import { PlayLibrary } from "../components/PlayLibrary";
 import { createMemoryBackend, createSeededMemoryBackend } from "../lib/backend";
-import { createPlaySet } from "../lib/playbook";
+import { createPlaySet, getEditorFieldLayout, normalizePlaySetSettings } from "../lib/playbook";
 
 async function mockBoardRect() {
   const board = await screen.findByTestId("playboard");
@@ -158,18 +158,49 @@ describe("AppShell", () => {
     const modal = await screen.findByTestId("play-set-settings-modal");
     const rowsInput = within(modal).getByDisplayValue("4");
     const columnsInput = within(modal).getByDisplayValue("1");
+    const widthInput = within(modal).getByDisplayValue("8.5");
+    const heightInput = within(modal).getByDisplayValue("11");
 
     fireEvent.change(rowsInput, { target: { value: "2" } });
-    fireEvent.change(columnsInput, { target: { value: "2" } });
+    fireEvent.change(columnsInput, { target: { value: "3" } });
+    fireEvent.change(widthInput, { target: { value: "3.16" } });
+    fireEvent.change(heightInput, { target: { value: "2.08" } });
 
-    expect(within(modal).getByText(/2 rows × 2 cols/i)).toBeInTheDocument();
+    expect(within(modal).getByText(/2 rows × 3 cols/i)).toBeInTheDocument();
     expect(within(rail).getByText("4x1")).toBeInTheDocument();
-    expect(within(rail).queryByText("2x2")).not.toBeInTheDocument();
+    expect(within(rail).queryByText("2x3")).not.toBeInTheDocument();
 
     fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
 
-    expect(screen.queryByTestId("play-set-settings-modal")).not.toBeInTheDocument();
-    expect(within(rail).getByText("2x2")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByTestId("play-set-settings-modal")).not.toBeInTheDocument();
+    });
+    expect(within(rail).getByText("2x3")).toBeInTheDocument();
+  });
+
+  it("blocks saving a portrait card layout in play set settings", async () => {
+    const playSet = createPlaySet("Play Set 1");
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [playSet],
+          initialPlays: [],
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
+    const inputs = within(modal).getAllByRole("spinbutton");
+    const saveButton = within(modal).getByRole("button", { name: "Save" });
+
+    fireEvent.change(inputs[0], { target: { value: "1" } });
+    fireEvent.change(inputs[1], { target: { value: "1" } });
+    fireEvent.change(inputs[2], { target: { value: "2" } });
+    fireEvent.change(inputs[3], { target: { value: "3" } });
+
+    expect(within(modal).getByText(/Printable cards must be square or wider than tall/i)).toBeInTheDocument();
+    expect(saveButton).toBeDisabled();
   });
 
   it("converts page dimensions when the print unit changes", async () => {
@@ -205,6 +236,28 @@ describe("AppShell", () => {
     expect(within(modal).getByDisplayValue("11")).toBeInTheDocument();
   });
 
+  it("rescales the active playboard when saved play set settings change the card ratio", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+
+    const defaultLayout = getEditorFieldLayout(normalizePlaySetSettings());
+    const playboard = await screen.findByTestId("playboard");
+    expect(playboard.getAttribute("viewBox")).toBe(`0 0 ${defaultLayout.width} ${defaultLayout.height}`);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
+    const inputs = within(modal).getAllByRole("spinbutton");
+
+    fireEvent.change(inputs[0], { target: { value: "2" } });
+    fireEvent.change(inputs[1], { target: { value: "3" } });
+    fireEvent.change(inputs[2], { target: { value: "3.16" } });
+    fireEvent.change(inputs[3], { target: { value: "2.08" } });
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playboard")).toHaveAttribute("viewBox", "0 0 120 120");
+    });
+  });
+
   it("creates a play set from the setup modal with roster and page layout details", async () => {
     render(<AppShell backend={createMemoryBackend({ initialPlaySets: [], initialPlays: [] })} />);
 
@@ -221,13 +274,13 @@ describe("AppShell", () => {
       target: { value: "2" },
     });
     fireEvent.change(screen.getByDisplayValue("1"), {
-      target: { value: "2" },
+      target: { value: "3" },
     });
     fireEvent.change(screen.getByDisplayValue("8.5"), {
-      target: { value: "8" },
+      target: { value: "3.16" },
     });
     fireEvent.change(screen.getByDisplayValue("11"), {
-      target: { value: "10" },
+      target: { value: "2.08" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create Play Set" }));
 
@@ -237,7 +290,24 @@ describe("AppShell", () => {
     fireEvent.click(screen.getByTestId("play-set-picker-trigger"));
     const rail = await screen.findByTestId("play-set-picker-rail");
     expect(within(rail).getByText("5 players")).toBeInTheDocument();
-    expect(within(rail).getByText("2x2")).toBeInTheDocument();
+    expect(within(rail).getByText("2x3")).toBeInTheDocument();
+  });
+
+  it("blocks creating a play set when the card would be taller than wide", async () => {
+    render(<AppShell backend={createMemoryBackend({ initialPlaySets: [], initialPlays: [] })} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create your first Play Set" }));
+    const modal = await screen.findByTestId("create-play-set-modal");
+    const inputs = within(modal).getAllByRole("spinbutton");
+    const createButton = within(modal).getByRole("button", { name: "Create Play Set" });
+
+    fireEvent.change(inputs[0], { target: { value: "1" } });
+    fireEvent.change(inputs[1], { target: { value: "1" } });
+    fireEvent.change(inputs[2], { target: { value: "2" } });
+    fireEvent.change(inputs[3], { target: { value: "3" } });
+
+    expect(within(modal).getByText(/Printable cards must be square or wider than tall/i)).toBeInTheDocument();
+    expect(createButton).toBeDisabled();
   });
 
   it("shows overlay arrows for an overflowing play set rail and scrolls by one tile", async () => {
@@ -321,6 +391,10 @@ describe("AppShell", () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
     await screen.findByTestId("playboard");
     const board = await mockBoardRect();
+    const layout = getEditorFieldLayout(normalizePlaySetSettings());
+    const initialQuarterbackY = Number(((70 / 80) * layout.height).toFixed(3));
+    const routeTargetY = Number(((200 / 800) * layout.height).toFixed(3));
+    const movedQuarterbackY = Number(Math.min(layout.height - 4, (720 / 800) * layout.height).toFixed(3));
 
     fireEvent.click(screen.getByRole("button", { name: "Route" }));
     fireEvent.pointerDown(screen.getByTestId("player-Q"), { clientX: 600, clientY: 700 });
@@ -328,7 +402,7 @@ describe("AppShell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Finish path" }));
 
     const path = screen.getByTestId(/path-/);
-    expect(path.getAttribute("points")).toContain("60,70");
+    expect(path.getAttribute("points")).toBe(`60,${initialQuarterbackY} 60,${routeTargetY}`);
 
     fireEvent.click(screen.getByRole("button", { name: "Select" }));
     await mockBoardRect();
@@ -338,7 +412,7 @@ describe("AppShell", () => {
       window.dispatchEvent(new MouseEvent("mouseup"));
     });
 
-    expect(path.getAttribute("points")).toMatch(/^56(?:\.0+1?)?,72/);
+    expect(path.getAttribute("points")).toBe(`56,${movedQuarterbackY} 60,${routeTargetY}`);
   });
 
   it("renders the default field surface without a field-style picker", async () => {

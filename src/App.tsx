@@ -310,24 +310,6 @@ export function AppShell({ backend }: AppShellProps) {
     });
   }
 
-  function updateActivePlaySet(updater: (playSet: PlaySet) => PlaySet) {
-    if (!activePlaySet) {
-      return;
-    }
-
-    setPlaySets((current) =>
-      current.map((playSet) => {
-        if (playSet.id !== activePlaySet.id) {
-          return playSet;
-        }
-
-        const updated = touchPlaySet(updater(playSet));
-        schedulePlaySetSave(updated);
-        return updated;
-      }),
-    );
-  }
-
   async function handleCreatePlaySet(input?: { name: string; settings: Partial<PlaySet["settings"]> }) {
     if (!userId) {
       return;
@@ -923,20 +905,46 @@ export function AppShell({ backend }: AppShellProps) {
       <PlaySetSettingsModal
         onClose={() => setIsPlaySetSettingsOpen(false)}
         onExportPlaySet={handleExportPlaySet}
-        onSave={({ name, settings }) => {
-          if (!activePlaySet) {
+        onSave={async ({ name, settings }) => {
+          if (!activePlaySet || !userId) {
             return;
           }
 
           const normalizedSettings = normalizePlaySetSettings(settings);
+          const nextPlays = activeSetPlays.map((play) => applyPlaySetSettingsToPlay(play, normalizedSettings));
           const nextPlaySet = touchPlaySet({
             ...activePlaySet,
             name,
             settings: normalizedSettings,
           });
-          setPlaySets((current) => current.map((item) => (item.id === nextPlaySet.id ? nextPlaySet : item)));
-          schedulePlaySetSave(nextPlaySet);
-          setIsPlaySetSettingsOpen(false);
+
+          const existingPlaySetTimer = playSetSaveTimers.current[nextPlaySet.id];
+          if (existingPlaySetTimer) {
+            window.clearTimeout(existingPlaySetTimer);
+            delete playSetSaveTimers.current[nextPlaySet.id];
+          }
+
+          nextPlays.forEach((play) => {
+            const timer = playSaveTimers.current[play.id];
+            if (timer) {
+              window.clearTimeout(timer);
+              delete playSaveTimers.current[play.id];
+            }
+          });
+
+          try {
+            const savedPlaySet = await backend.savePlaySet(userId, nextPlaySet);
+            const savedPlays = nextPlays.length > 0 ? await backend.savePlays(nextPlays) : [];
+
+            setPlaySets((current) => current.map((item) => (item.id === savedPlaySet.id ? savedPlaySet : item)));
+            setPlaysBySetId((current) => ({
+              ...current,
+              [savedPlaySet.id]: savedPlays,
+            }));
+            setIsPlaySetSettingsOpen(false);
+          } catch (error) {
+            setWorkspaceError(getErrorMessage(error));
+          }
         }}
         open={isPlaySetSettingsOpen}
         playSet={activePlaySet}
