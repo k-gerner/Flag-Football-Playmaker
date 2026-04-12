@@ -1,10 +1,7 @@
 import { jsPDF } from "jspdf";
 import "svg2pdf.js";
+import { getPlaySetCardDimensions, getPrintSpacing } from "./playbook";
 import type { PlayDocument, PlaySet } from "./types";
-
-function getSpacing(unit: PlaySet["settings"]["print"]["unit"]) {
-  return unit === "in" ? 0.08 : 2;
-}
 
 function getCardTitle(playSet: PlaySet, play: PlayDocument) {
   const bits: string[] = [];
@@ -35,9 +32,8 @@ async function drawPlayCard(
   x: number,
   y: number,
 ) {
-  const cardWidth = playSet.settings.print.width;
-  const cardHeight = playSet.settings.print.height;
-  const spacing = getSpacing(playSet.settings.print.unit);
+  const { width: cardWidth, height: cardHeight } = getPlaySetCardDimensions(playSet.settings);
+  const spacing = getPrintSpacing(playSet.settings.print.unit);
   const title = getCardTitle(playSet, play);
   const titleHeight = title ? cardHeight * 0.16 : 0;
   const boardMargin = spacing;
@@ -70,8 +66,13 @@ export async function exportPlayToPdf(
   play: PlayDocument,
   svg: SVGSVGElement,
 ) {
-  const doc = createDoc(playSet, playSet.settings.print.height);
-  await drawPlayCard(doc, playSet, play, svg, 0, 0);
+  const pageHeight = playSet.settings.print.height;
+  const doc = createDoc(playSet, pageHeight);
+  const { width: cardWidth, height: cardHeight } = getPlaySetCardDimensions(playSet.settings);
+  const x = Math.max(0, (playSet.settings.print.width - cardWidth) / 2);
+  const y = Math.max(0, (pageHeight - cardHeight) / 2);
+
+  await drawPlayCard(doc, playSet, play, svg, x, y);
   doc.save(`${play.name.replace(/\s+/g, "-").toLowerCase() || "play"}.pdf`);
 }
 
@@ -81,11 +82,12 @@ export async function exportPlaySetToPdf(
   svgMap: Record<string, SVGSVGElement | null>,
 ) {
   const orderedPlays = [...plays].sort((a, b) => a.playNumber - b.playNumber);
-  const spacing = getSpacing(playSet.settings.print.unit);
-  const pageHeight =
-    playSet.settings.print.height * playSet.settings.layout.playsPerPage +
-    spacing * Math.max(0, playSet.settings.layout.playsPerPage - 1);
-
+  const spacing = getPrintSpacing(playSet.settings.print.unit);
+  const pageHeight = playSet.settings.print.height;
+  const pageWidth = playSet.settings.print.width;
+  const { width: cardWidth, height: cardHeight } = getPlaySetCardDimensions(playSet.settings);
+  const columnsPerPage = Math.max(1, playSet.settings.layout.columnsPerPage);
+  const playsPerPage = Math.max(1, playSet.settings.layout.playsPerPage);
   const doc = createDoc(playSet, pageHeight);
 
   for (const [index, play] of orderedPlays.entries()) {
@@ -94,15 +96,17 @@ export async function exportPlaySetToPdf(
       continue;
     }
 
-    const slot = index % playSet.settings.layout.playsPerPage;
+    const slot = index % playsPerPage;
     if (index > 0 && slot === 0) {
-      doc.addPage([playSet.settings.print.width, pageHeight], playSet.settings.print.width >= pageHeight ? "landscape" : "portrait");
+      doc.addPage([pageWidth, pageHeight], pageWidth >= pageHeight ? "landscape" : "portrait");
     }
 
-    const y = slot * (playSet.settings.print.height + spacing);
-    await drawPlayCard(doc, playSet, play, svg, 0, y);
+    const row = Math.floor(slot / columnsPerPage);
+    const column = slot % columnsPerPage;
+    const x = column * (cardWidth + spacing);
+    const y = row * (cardHeight + spacing);
+    await drawPlayCard(doc, playSet, play, svg, x, y);
   }
 
   doc.save(`${playSet.name.replace(/\s+/g, "-").toLowerCase() || "play-set"}.pdf`);
 }
-

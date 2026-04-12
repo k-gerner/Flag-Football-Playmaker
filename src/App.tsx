@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthPanel } from "./components/AuthPanel";
+import { CreatePlaySetModal } from "./components/CreatePlaySetModal";
 import { InspectorPanel } from "./components/InspectorPanel";
 import { PlayLibrary } from "./components/PlayLibrary";
 import { Playboard } from "./components/Playboard";
@@ -9,14 +10,12 @@ import { createMemoryBackend, supabaseBackend, type AppBackend } from "./lib/bac
 import { exportPlaySetToPdf, exportPlayToPdf } from "./lib/pdf";
 import { makeId } from "./lib/id";
 import {
-  PRINT_PRESETS,
   applyPlaySetSettingsToPlay,
   clonePlayDocument,
   createPlayDocument,
   createPlaySet,
   normalizePlayDisplaySettings,
   normalizePlaySetSettings,
-  remapFormation,
   renumberPlays,
   touchPlay,
   touchPlaySet,
@@ -27,7 +26,6 @@ import type {
   HandoffMark,
   PlayDocument,
   PlaySet,
-  PlayerCount,
   PlayerToken,
   Point,
   RoutePath,
@@ -81,6 +79,7 @@ export function AppShell({ backend }: AppShellProps) {
   const [activePlaySetId, setActivePlaySetId] = useState<string | null>(null);
   const [activePlayId, setActivePlayId] = useState<string | null>(null);
   const [copyTargetPlaySetId, setCopyTargetPlaySetId] = useState("");
+  const [isCreatePlaySetOpen, setIsCreatePlaySetOpen] = useState(false);
   const [isPlaySetSettingsOpen, setIsPlaySetSettingsOpen] = useState(false);
   const [tool, setTool] = useState<ToolMode>("select");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
@@ -344,12 +343,12 @@ export function AppShell({ backend }: AppShellProps) {
     schedulePlaySetSave(nextPlaySet);
   }
 
-  async function handleCreatePlaySet() {
+  async function handleCreatePlaySet(input?: { name: string; settings: Partial<PlaySet["settings"]> }) {
     if (!userId) {
       return;
     }
 
-    const newPlaySet = createPlaySet(`Play Set ${playSets.length + 1}`);
+    const newPlaySet = createPlaySet(input?.name ?? `Play Set ${playSets.length + 1}`, input?.settings);
 
     try {
       const savedPlaySet = await backend.savePlaySet(userId, newPlaySet);
@@ -360,6 +359,7 @@ export function AppShell({ backend }: AppShellProps) {
       }));
       setActivePlaySetId(savedPlaySet.id);
       setActivePlayId(null);
+      setIsCreatePlaySetOpen(false);
       clearTransientState();
     } catch (error) {
       setWorkspaceError(getErrorMessage(error));
@@ -773,7 +773,7 @@ export function AppShell({ backend }: AppShellProps) {
               activePlaySet={activePlaySet}
               activePlaySetId={activePlaySet?.id ?? null}
               onCreatePlay={handleCreatePlay}
-              onCreatePlaySet={handleCreatePlaySet}
+              onCreatePlaySet={() => setIsCreatePlaySetOpen(true)}
               onDeletePlay={handleDeletePlay}
               onDeletePlaySet={handleDeletePlaySet}
               onDuplicatePlay={handleDuplicatePlay}
@@ -891,7 +891,7 @@ export function AppShell({ backend }: AppShellProps) {
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <button
                     className="rounded-full bg-ember-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-ember-500/90"
-                    onClick={handleCreatePlaySet}
+                    onClick={() => setIsCreatePlaySetOpen(true)}
                     type="button"
                   >
                     {hasPlaySets ? "Create a new Play Set" : "Create your first Play Set"}
@@ -928,42 +928,14 @@ export function AppShell({ backend }: AppShellProps) {
         </div>
       </div>
 
+      <CreatePlaySetModal
+        defaultName={`Play Set ${playSets.length + 1}`}
+        onClose={() => setIsCreatePlaySetOpen(false)}
+        onSubmit={(payload) => void handleCreatePlaySet(payload)}
+        open={isCreatePlaySetOpen}
+      />
+
       <PlaySetSettingsModal
-        onApplyPreset={(presetId) => {
-          if (!activePlaySet) {
-            return;
-          }
-
-          if (presetId === "custom") {
-            handlePlaySetSettingsCommit({
-              ...activePlaySet.settings,
-              print: {
-                ...activePlaySet.settings.print,
-                presetId: null,
-              },
-            });
-            return;
-          }
-
-          const preset = PRINT_PRESETS.find((item) => item.id === presetId);
-          if (!preset) {
-            return;
-          }
-
-          handlePlaySetSettingsCommit({
-            ...activePlaySet.settings,
-            print: {
-              presetId: preset.id,
-              width: preset.width,
-              height: preset.height,
-              unit: preset.unit,
-            },
-            layout: {
-              ...activePlaySet.settings.layout,
-              cardAspectRatio: Number((preset.width / preset.height).toFixed(3)),
-            },
-          });
-        }}
         onBackgroundColorChange={(backgroundColor) => {
           if (!activePlaySet) {
             return;
@@ -979,19 +951,6 @@ export function AppShell({ backend }: AppShellProps) {
         }}
         onClose={() => setIsPlaySetSettingsOpen(false)}
         onExportPlaySet={handleExportPlaySet}
-        onFieldThemeChange={(theme) => {
-          if (!activePlaySet) {
-            return;
-          }
-
-          handlePlaySetSettingsCommit({
-            ...activePlaySet.settings,
-            field: {
-              ...activePlaySet.settings.field,
-              theme,
-            },
-          });
-        }}
         onLayoutSettingChange={(changes) => {
           if (!activePlaySet) {
             return;
@@ -1001,20 +960,14 @@ export function AppShell({ backend }: AppShellProps) {
             ...activePlaySet.settings.layout,
             ...changes,
           };
-          const ratio =
-            typeof nextLayout.cardAspectRatio === "number" && nextLayout.cardAspectRatio > 0
-              ? nextLayout.cardAspectRatio
-              : activePlaySet.settings.layout.cardAspectRatio;
 
           handlePlaySetSettingsCommit({
             ...activePlaySet.settings,
             layout: {
               ...nextLayout,
-              cardAspectRatio: Number(ratio.toFixed(3)),
-            },
-            print: {
-              ...activePlaySet.settings.print,
-              height: Number((activePlaySet.settings.print.width / ratio).toFixed(2)),
+              playsPerPage:
+                (nextLayout.rowsPerPage ?? activePlaySet.settings.layout.rowsPerPage) *
+                (nextLayout.columnsPerPage ?? activePlaySet.settings.layout.columnsPerPage),
             },
           });
         }}
@@ -1024,33 +977,6 @@ export function AppShell({ backend }: AppShellProps) {
             name,
           }))
         }
-        onPlayerCountChange={(count) => {
-          if (!activePlaySet) {
-            return;
-          }
-
-          const nextSettings = normalizePlaySetSettings({
-            ...activePlaySet.settings,
-            roster: {
-              ...activePlaySet.settings.roster,
-              playerCount: count,
-            },
-          });
-          const nextPlaySet = touchPlaySet({
-            ...activePlaySet,
-            settings: nextSettings,
-          });
-          const remappedPlays = renumberPlays(activeSetPlays.map((play) => remapFormation(play, count)));
-
-          setPlaySets((current) => current.map((item) => (item.id === nextPlaySet.id ? nextPlaySet : item)));
-          setPlaysBySetId((current) => ({
-            ...current,
-            [nextPlaySet.id]: remappedPlays,
-          }));
-          clearTransientState();
-          schedulePlaySetSave(nextPlaySet);
-          void persistPlaysImmediately(remappedPlays);
-        }}
         onPrintSettingChange={(changes) => {
           if (!activePlaySet) {
             return;
@@ -1063,10 +989,6 @@ export function AppShell({ backend }: AppShellProps) {
           handlePlaySetSettingsCommit({
             ...activePlaySet.settings,
             print: nextPrint,
-            layout: {
-              ...activePlaySet.settings.layout,
-              cardAspectRatio: Number((nextPrint.width / nextPrint.height).toFixed(3)),
-            },
           });
         }}
         open={isPlaySetSettingsOpen}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { IoMdSettings } from "react-icons/io";
+import { IoSettings } from "react-icons/io5";
 import type { PlayDocument, PlaySet } from "../lib/types";
 
 interface PlayLibraryProps {
@@ -173,7 +173,7 @@ export function PlayLibrary({
             onClick={onOpenPlaySetSettings}
             type="button"
           >
-            <IoMdSettings aria-hidden="true" className="h-4 w-4 shrink-0" />
+            <IoSettings aria-hidden="true" className="h-4 w-4 shrink-0" />
             <span>Settings</span>
           </button>
         </div>
@@ -244,11 +244,16 @@ export function PlayLibrary({
                       onClick={() => handlePlaySetSelect(playSet.id)}
                       type="button"
                     >
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-start justify-between gap-3">
                         <p className="font-display text-base font-bold text-ink-950">{playSet.name}</p>
-                        <span className="rounded-full bg-field-100 px-3 py-1 text-xs font-semibold text-field-700">
-                          {playSet.settings.layout.playsPerPage}/page
-                        </span>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          <span className="rounded-full bg-field-100 px-3 py-1 text-xs font-semibold text-field-700">
+                            {playSet.settings.roster.playerCount} players
+                          </span>
+                          <span className="rounded-full bg-ink-950 px-3 py-1 text-xs font-semibold text-white">
+                            {playSet.settings.layout.playsPerPage}/page
+                          </span>
+                        </div>
                       </div>
                       <p className="mt-2 text-xs uppercase tracking-[0.18em] text-ink-950/45">Last edited</p>
                       <p className="text-sm text-ink-950/70">{formatTimestamp(playSet.updatedAt)}</p>

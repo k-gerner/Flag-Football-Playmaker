@@ -39,17 +39,15 @@ describe("AppShell", () => {
     expect(await screen.findByText("Sign in to manage cloud-saved Play Sets.")).toBeInTheDocument();
   });
 
-  it("switches formations from the inspector", async () => {
+  it("shows player count as a locked value in play set settings", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
 
-    const select = await screen.findByDisplayValue("7 players");
-    await act(async () => {
-      fireEvent.change(select, { target: { value: "5" } });
-    });
-
-    expect(screen.getAllByTestId(/player-/)).toHaveLength(5);
+    expect(modal).toHaveTextContent(/7\s*players/i);
+    expect(within(modal).queryByText("Locked after creation")).not.toBeInTheDocument();
+    expect(within(modal).queryByDisplayValue("Whiteboard")).not.toBeInTheDocument();
   });
 
   it("prompts for a play set before creating a play", async () => {
@@ -116,8 +114,10 @@ describe("AppShell", () => {
     const rail = await screen.findByTestId("play-set-picker-rail");
     fireEvent.click(within(rail).getByRole("button", { name: "New Play Set" }));
 
+    expect(await screen.findByTestId("create-play-set-modal")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create Play Set" }));
+
     expect(await screen.findByText("Create your first play")).toBeInTheDocument();
-    expect(screen.queryByTestId("play-set-picker-rail")).not.toBeInTheDocument();
     expect(screen.getByTestId("play-set-picker-trigger")).toHaveTextContent("Play Set 1");
   });
 
@@ -136,6 +136,41 @@ describe("AppShell", () => {
 
     expect(await screen.findByTestId("play-set-settings-modal")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Play Set 1")).toBeInTheDocument();
+  });
+
+  it("creates a play set from the setup modal with roster and page layout details", async () => {
+    render(<AppShell backend={createMemoryBackend({ initialPlaySets: [], initialPlays: [] })} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create your first Play Set" }));
+
+    expect(await screen.findByTestId("create-play-set-modal")).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("Play Set 1"), {
+      target: { value: "Red Zone" },
+    });
+    fireEvent.change(screen.getByDisplayValue("7 players"), {
+      target: { value: "5" },
+    });
+    fireEvent.change(screen.getByDisplayValue("4"), {
+      target: { value: "2" },
+    });
+    fireEvent.change(screen.getByDisplayValue("1"), {
+      target: { value: "2" },
+    });
+    fireEvent.change(screen.getByDisplayValue("8.5"), {
+      target: { value: "8" },
+    });
+    fireEvent.change(screen.getByDisplayValue("11"), {
+      target: { value: "10" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create Play Set" }));
+
+    expect(await screen.findByText("Create your first play")).toBeInTheDocument();
+    expect(screen.getByTestId("play-set-picker-trigger")).toHaveTextContent("Red Zone");
+
+    fireEvent.click(screen.getByTestId("play-set-picker-trigger"));
+    const rail = await screen.findByTestId("play-set-picker-rail");
+    expect(within(rail).getByText("5 players")).toBeInTheDocument();
+    expect(within(rail).getByText("4/page")).toBeInTheDocument();
   });
 
   it("shows overlay arrows for an overflowing play set rail and scrolls by one tile", async () => {
@@ -205,6 +240,7 @@ describe("AppShell", () => {
     expect(await screen.findByText("Start with a Play Set")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Create your first Play Set" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create Play Set" }));
 
     expect(await screen.findByText("Create your first play")).toBeInTheDocument();
     expect(screen.queryByTestId("playboard")).not.toBeInTheDocument();
@@ -238,16 +274,11 @@ describe("AppShell", () => {
     expect(path.getAttribute("points")).toMatch(/^56(?:\.0+1?)?,72/);
   });
 
-  it("defaults to a white field and allows switching to green", async () => {
+  it("renders the default field surface without a field-style picker", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
 
     expect(await screen.findByTestId("field-surface")).toHaveAttribute("fill", "#fffdf7");
-
     fireEvent.click(screen.getByRole("button", { name: "Open play set settings" }));
-    fireEvent.change(screen.getByDisplayValue("Whiteboard"), {
-      target: { value: "green" },
-    });
-
-    expect(screen.getByTestId("field-surface")).toHaveAttribute("fill", "rgba(255,255,255,0.02)");
+    expect(screen.queryByText("Field style")).not.toBeInTheDocument();
   });
 });

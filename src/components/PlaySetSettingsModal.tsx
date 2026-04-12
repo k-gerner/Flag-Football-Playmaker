@@ -1,16 +1,13 @@
 import { useEffect } from "react";
-import { FIELD_THEMES, PRINT_PRESETS } from "../lib/playbook";
-import type { FieldTheme, PlaySet, PlayerCount } from "../lib/types";
+import { getPlaySetCardDimensions } from "../lib/playbook";
+import type { PlaySet } from "../lib/types";
 
 interface PlaySetSettingsModalProps {
   playSet: PlaySet | null;
   open: boolean;
   onClose: () => void;
   onPlaySetNameChange: (name: string) => void;
-  onPlayerCountChange: (count: PlayerCount) => void;
-  onFieldThemeChange: (theme: FieldTheme) => void;
   onBackgroundColorChange: (backgroundColor: string) => void;
-  onApplyPreset: (presetId: string) => void;
   onPrintSettingChange: (changes: Partial<PlaySet["settings"]["print"]>) => void;
   onLayoutSettingChange: (changes: Partial<PlaySet["settings"]["layout"]>) => void;
   onExportPlaySet: () => void;
@@ -21,10 +18,7 @@ export function PlaySetSettingsModal({
   open,
   onClose,
   onPlaySetNameChange,
-  onPlayerCountChange,
-  onFieldThemeChange,
   onBackgroundColorChange,
-  onApplyPreset,
   onPrintSettingChange,
   onLayoutSettingChange,
   onExportPlaySet,
@@ -50,7 +44,8 @@ export function PlaySetSettingsModal({
     return null;
   }
 
-  const previewAspect = playSet.settings.layout.cardAspectRatio;
+  const cardDimensions = getPlaySetCardDimensions(playSet.settings);
+  const previewAspect = cardDimensions.width / cardDimensions.height;
 
   return (
     <div
@@ -92,7 +87,7 @@ export function PlaySetSettingsModal({
           <section className="rounded-3xl border border-black/5 bg-white/60 p-4">
             <div>
               <p className="font-display text-base font-bold text-ink-950">Play Set</p>
-              <p className="text-sm text-ink-950/60">Core roster and field styling for this set.</p>
+              <p className="text-sm text-ink-950/60">Core roster details and card styling for this set.</p>
             </div>
 
             <div className="mt-3 space-y-3">
@@ -105,35 +100,14 @@ export function PlaySetSettingsModal({
                 />
               </label>
 
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Player count</span>
-                  <select
-                    className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
-                    onChange={(event) => onPlayerCountChange(Number(event.target.value) as PlayerCount)}
-                    value={playSet.settings.roster.playerCount}
-                  >
-                    <option value={5}>5 players</option>
-                    <option value={7}>7 players</option>
-                    <option value={8}>8 players</option>
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Field style</span>
-                  <select
-                    className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
-                    onChange={(event) => onFieldThemeChange(event.target.value as FieldTheme)}
-                    value={playSet.settings.field.theme}
-                  >
-                    {Object.entries(FIELD_THEMES).map(([value, theme]) => (
-                      <option key={value} value={value}>
-                        {theme.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-ink-950/70">Player count</span>
+                <div className="flex h-[42px] items-center rounded-2xl border border-black/10 bg-white/80 px-3">
+                  <span className="rounded-full bg-field-100 px-3 py-1 text-sm font-semibold text-field-700">
+                    {playSet.settings.roster.playerCount} players
+                  </span>
+                </div>
+              </label>
 
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold text-ink-950/70">Card background color</span>
@@ -156,57 +130,40 @@ export function PlaySetSettingsModal({
             <div className="mt-3 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Plays per page</span>
+                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Rows per page</span>
                   <input
                     className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     min={1}
-                    max={6}
                     onChange={(event) =>
                       onLayoutSettingChange({
-                        playsPerPage: Number(event.target.value) || playSet.settings.layout.playsPerPage,
+                        rowsPerPage: Number(event.target.value) || playSet.settings.layout.rowsPerPage,
                       })
                     }
                     step={1}
                     type="number"
-                    value={playSet.settings.layout.playsPerPage}
+                    value={playSet.settings.layout.rowsPerPage}
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Card aspect ratio</span>
+                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Columns per page</span>
                   <input
                     className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     min={1}
                     onChange={(event) =>
                       onLayoutSettingChange({
-                        cardAspectRatio: Number(event.target.value) || playSet.settings.layout.cardAspectRatio,
+                        columnsPerPage: Number(event.target.value) || playSet.settings.layout.columnsPerPage,
                       })
                     }
-                    step="0.05"
+                    step={1}
                     type="number"
-                    value={playSet.settings.layout.cardAspectRatio}
+                    value={playSet.settings.layout.columnsPerPage}
                   />
                 </label>
               </div>
 
-              <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-ink-950/70">Preset size</span>
-                <select
-                  className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
-                  onChange={(event) => onApplyPreset(event.target.value)}
-                  value={playSet.settings.print.presetId ?? "custom"}
-                >
-                  <option value="custom">Custom</option>
-                  {PRINT_PRESETS.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
               <div className="grid grid-cols-[1fr_1fr_auto] gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Width</span>
+                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page width</span>
                   <input
                     className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     min={0.5}
@@ -222,7 +179,7 @@ export function PlaySetSettingsModal({
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Height</span>
+                  <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page height</span>
                   <input
                     className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     min={0.5}
@@ -269,6 +226,8 @@ export function PlaySetSettingsModal({
                     }}
                   >
                     <div className="flex h-full items-center justify-center text-center text-sm text-ink-950/60">
+                      {playSet.settings.layout.rowsPerPage} rows × {playSet.settings.layout.columnsPerPage} cols
+                      <br />
                       {playSet.settings.print.width} x {playSet.settings.print.height} {playSet.settings.print.unit}
                     </div>
                   </div>

@@ -1,6 +1,5 @@
 import { makeId } from "./id";
 import type {
-  FieldTheme,
   FieldLayout,
   PlayDisplaySettings,
   PlayDocument,
@@ -24,59 +23,21 @@ export const BOARD_LAYOUT: FieldLayout = {
 
 export const CURRENT_PLAY_SCHEMA_VERSION = 1;
 
-export const FIELD_THEMES: Record<
-  FieldTheme,
-  {
-    label: string;
-    cardBackground: string;
-    overlay: string;
-    surface: string;
-    grid: string;
-    gridText: string;
-    scrimmage: string;
-    accent: string;
-    route: string;
-    motion: string;
-    handoff: string;
-    handoffFill: string;
-    handleFill: string;
-    handleStroke: string;
-  }
-> = {
-  white: {
-    label: "Whiteboard",
-    cardBackground:
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 239, 230, 0.98))",
-    overlay: "linear-gradient(180deg, rgba(0, 0, 0, 0.04), transparent)",
-    surface: "#fffdf7",
-    grid: "rgba(31, 41, 55, 0.38)",
-    gridText: "rgba(31, 41, 55, 0.45)",
-    scrimmage: "#d97706",
-    accent: "#92400e",
-    route: "#111827",
-    motion: "#c2410c",
-    handoff: "#9a3412",
-    handoffFill: "#fffaf0",
-    handleFill: "#f6e8c8",
-    handleStroke: "#111827",
-  },
-  green: {
-    label: "Grass field",
-    cardBackground:
-      "linear-gradient(180deg, rgba(95, 125, 83, 0.92), rgba(47, 79, 61, 0.96)), linear-gradient(0deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03))",
-    overlay: "linear-gradient(180deg, rgba(0, 0, 0, 0.25), transparent)",
-    surface: "rgba(255,255,255,0.02)",
-    grid: "rgba(255,255,255,0.65)",
-    gridText: "rgba(255,255,255,0.4)",
-    scrimmage: "#fff4d6",
-    accent: "#ffe5b8",
-    route: "#fff8e7",
-    motion: "#f4b16d",
-    handoff: "#f7d8ab",
-    handoffFill: "#10231a",
-    handleFill: "#fff4d6",
-    handleStroke: "#10231a",
-  },
+export const BOARD_THEME = {
+  cardBackground:
+    "linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 239, 230, 0.98))",
+  overlay: "linear-gradient(180deg, rgba(0, 0, 0, 0.04), transparent)",
+  surface: "#fffdf7",
+  grid: "rgba(31, 41, 55, 0.38)",
+  gridText: "rgba(31, 41, 55, 0.45)",
+  scrimmage: "#d97706",
+  accent: "#92400e",
+  route: "#111827",
+  motion: "#c2410c",
+  handoff: "#9a3412",
+  handoffFill: "#fffaf0",
+  handleFill: "#f6e8c8",
+  handleStroke: "#111827",
 };
 
 export const PLAYER_COLORS = [
@@ -109,24 +70,42 @@ export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
     playerCount: 7,
   },
   field: {
-    theme: "white",
     backgroundColor: "#fff8ee",
   },
   print: {
-    presetId: PRINT_PRESETS[1].id,
-    width: PRINT_PRESETS[1].width,
-    height: PRINT_PRESETS[1].height,
-    unit: PRINT_PRESETS[1].unit,
+    presetId: null,
+    width: 8.5,
+    height: 11,
+    unit: "in",
   },
   layout: {
+    rowsPerPage: 4,
+    columnsPerPage: 1,
     playsPerPage: 4,
-    cardAspectRatio: Number((PRINT_PRESETS[1].width / PRINT_PRESETS[1].height).toFixed(3)),
+    cardAspectRatio: Number((8.5 / ((11 - getPrintSpacing("in") * 3) / 4)).toFixed(3)),
   },
   export: {
     includePlayNumber: true,
     includePlayName: true,
   },
 };
+
+export function getPrintSpacing(unit: PrintSettings["unit"]) {
+  return unit === "in" ? 0.08 : 2;
+}
+
+export function getPlaySetCardDimensions(settings: PlaySetSettings) {
+  const spacing = getPrintSpacing(settings.print.unit);
+  const columns = Math.max(1, settings.layout.columnsPerPage);
+  const rows = Math.max(1, settings.layout.rowsPerPage);
+  const width = Math.max(0.1, (settings.print.width - spacing * Math.max(0, columns - 1)) / columns);
+  const height = Math.max(0.1, (settings.print.height - spacing * Math.max(0, rows - 1)) / rows);
+
+  return {
+    width: Number(width.toFixed(3)),
+    height: Number(height.toFixed(3)),
+  };
+}
 
 export const DEFAULT_PLAY_DISPLAY_SETTINGS: PlayDisplaySettings = {
   yardMarkers: [...YARD_MARKER_OPTIONS],
@@ -192,13 +171,26 @@ export function normalizePlaySetSettings(input?: Partial<PlaySetSettings> | null
     ...DEFAULT_PLAY_SET_SETTINGS.layout,
     ...(input?.layout ?? {}),
   };
-
-  const resolvedRatio =
-    Number.isFinite(layout.cardAspectRatio) && layout.cardAspectRatio > 0
-      ? layout.cardAspectRatio
-      : print.width / print.height;
+  const rowsPerPage = Math.min(6, Math.max(1, Math.round(layout.rowsPerPage)));
+  const columnsPerPage = Math.min(6, Math.max(1, Math.round(layout.columnsPerPage)));
+  const playsPerPage = rowsPerPage * columnsPerPage;
+  const resolvedWidth = Number.isFinite(print.width) && print.width > 0 ? print.width : DEFAULT_PLAY_SET_SETTINGS.print.width;
   const resolvedHeight =
-    Number.isFinite(print.height) && print.height > 0 ? print.height : Number((print.width / resolvedRatio).toFixed(2));
+    Number.isFinite(print.height) && print.height > 0 ? print.height : DEFAULT_PLAY_SET_SETTINGS.print.height;
+  const cardDimensions = getPlaySetCardDimensions({
+    ...DEFAULT_PLAY_SET_SETTINGS,
+    print: {
+      ...print,
+      width: resolvedWidth,
+      height: resolvedHeight,
+    },
+    layout: {
+      ...layout,
+      rowsPerPage,
+      columnsPerPage,
+      playsPerPage,
+    },
+  });
 
   return {
     roster: {
@@ -211,11 +203,14 @@ export function normalizePlaySetSettings(input?: Partial<PlaySetSettings> | null
     },
     print: {
       ...print,
-      height: resolvedHeight,
+      width: Number(resolvedWidth.toFixed(2)),
+      height: Number(resolvedHeight.toFixed(2)),
     },
     layout: {
-      playsPerPage: Math.min(6, Math.max(1, Math.round(layout.playsPerPage))),
-      cardAspectRatio: Number(resolvedRatio.toFixed(3)),
+      rowsPerPage,
+      columnsPerPage,
+      playsPerPage,
+      cardAspectRatio: Number((cardDimensions.width / cardDimensions.height).toFixed(3)),
     },
     export: {
       ...DEFAULT_PLAY_SET_SETTINGS.export,
@@ -240,13 +235,13 @@ export function normalizePlayDisplaySettings(
   };
 }
 
-export function createPlaySet(name = "New Play Set"): PlaySet {
+export function createPlaySet(name = "New Play Set", settings?: Partial<PlaySetSettings> | null): PlaySet {
   const now = new Date().toISOString();
 
   return {
     id: makeId("play-set"),
     name,
-    settings: normalizePlaySetSettings(),
+    settings: normalizePlaySetSettings(settings),
     createdAt: now,
     updatedAt: now,
   };

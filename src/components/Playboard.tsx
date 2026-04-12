@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { clientToBoardPoint } from "../lib/geometry";
-import { FIELD_THEMES, buildPolylinePoints, clampPoint } from "../lib/playbook";
+import { BOARD_THEME, buildPolylinePoints, clampPoint } from "../lib/playbook";
 import type { DraftPath, PlayDocument, PlaySetSettings, Point, ToolMode } from "../lib/types";
 
 interface PlayboardProps {
@@ -60,7 +60,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
 ) {
   const localRef = useRef<SVGSVGElement | null>(null);
   const [dragState, setDragState] = useState<DragState>(null);
-  const theme = FIELD_THEMES[playSetSettings.field.theme];
+  const theme = BOARD_THEME;
   const layout = play.fieldLayout;
 
   useEffect(() => {
@@ -382,4 +382,3 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
     </div>
   );
 });
-

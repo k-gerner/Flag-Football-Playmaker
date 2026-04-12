@@ -3,29 +3,35 @@ import {
   clonePlayDocument,
   createPlayDocument,
   createPlaySet,
+  getPlaySetCardDimensions,
   normalizePlayDisplaySettings,
   normalizePlaySetSettings,
   renumberPlays,
 } from "../lib/playbook";
 
 describe("playbook helpers", () => {
-  it("normalizes Play Set settings and keeps ratio in sync", () => {
+  it("normalizes Play Set settings and derives paging from rows and columns", () => {
     const settings = normalizePlaySetSettings({
       print: {
         presetId: null,
-        width: 4,
-        height: 2,
+        width: 8,
+        height: 10,
         unit: "in",
       },
       layout: {
-        playsPerPage: 9,
-        cardAspectRatio: 2,
+        rowsPerPage: 2,
+        columnsPerPage: 2,
+        playsPerPage: 1,
+        cardAspectRatio: 1,
       },
     });
+    const card = getPlaySetCardDimensions(settings);
 
-    expect(settings.layout.playsPerPage).toBe(6);
-    expect(settings.layout.cardAspectRatio).toBe(2);
-    expect(settings.print.height).toBe(2);
+    expect(settings.layout.rowsPerPage).toBe(2);
+    expect(settings.layout.columnsPerPage).toBe(2);
+    expect(settings.layout.playsPerPage).toBe(4);
+    expect(settings.layout.cardAspectRatio).toBe(Number((card.width / card.height).toFixed(3)));
+    expect(settings.print.height).toBe(10);
   });
 
   it("creates a play from Play Set defaults", () => {
@@ -118,4 +124,3 @@ describe("playbook helpers", () => {
     expect(remapped.handoffs).toHaveLength(0);
   });
 });
-

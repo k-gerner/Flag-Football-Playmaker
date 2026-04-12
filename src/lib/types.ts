@@ -2,7 +2,6 @@ export type PlayerCount = 5 | 7 | 8;
 export type ToolMode = "select" | "route" | "motion" | "handoff";
 export type RouteKind = "route" | "motion";
 export type Unit = "in" | "mm";
-export type FieldTheme = "white" | "green";
 
 export interface Point {
   x: number;
@@ -51,11 +50,12 @@ export interface PlaySetSettings {
     playerCount: PlayerCount;
   };
   field: {
-    theme: FieldTheme;
     backgroundColor: string;
   };
   print: PrintSettings;
   layout: {
+    rowsPerPage: number;
+    columnsPerPage: number;
     playsPerPage: number;
     cardAspectRatio: number;
   };
@@ -120,4 +120,3 @@ export interface StoredPlayPayload {
   displaySettings?: Partial<PlayDisplaySettings>;
   schemaVersion?: number;
 }
-
