@@ -759,7 +759,7 @@ export function AppShell({ backend }: AppShellProps) {
         ) : null}
 
         <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)_390px]">
-          <div className="min-h-[720px] xl:sticky xl:top-6">
+          <div className="min-h-[720px] min-w-0 xl:sticky xl:top-6">
             <PlayLibrary
               activePlayId={activePlay?.id ?? null}
               activePlaySetId={activePlaySet?.id ?? null}

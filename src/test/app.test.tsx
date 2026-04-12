@@ -1,5 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { vi } from "vitest";
 import { AppShell } from "../App";
+import { PlayLibrary } from "../components/PlayLibrary";
 import { createMemoryBackend, createSeededMemoryBackend } from "../lib/backend";
 import { createPlaySet } from "../lib/playbook";
 
@@ -62,6 +64,118 @@ describe("AppShell", () => {
     expect(await screen.findByText("Create a play in Play Set 1 to unlock the field tools and start drawing.")).toBeInTheDocument();
     expect(screen.getByText("Create your first play")).toBeInTheDocument();
     expect(screen.queryByTestId("playboard")).not.toBeInTheDocument();
+  });
+
+  it("shows the selected play set in the collapsed picker and expands into a horizontal rail", async () => {
+    const playSet1 = {
+      ...createPlaySet("Play Set 1"),
+      createdAt: "2026-04-12T15:00:00.000Z",
+      updatedAt: "2026-04-12T15:00:00.000Z",
+    };
+    const playSet2 = {
+      ...createPlaySet("Play Set 2"),
+      createdAt: "2026-04-12T16:00:00.000Z",
+      updatedAt: "2026-04-12T16:00:00.000Z",
+    };
+
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [playSet1, playSet2],
+          initialPlays: [],
+        })}
+      />,
+    );
+
+    const trigger = await screen.findByTestId("play-set-picker-trigger");
+    expect(trigger).toHaveTextContent("Play Set 2");
+    expect(screen.queryByTestId("play-set-picker-rail")).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+
+    const rail = await screen.findByTestId("play-set-picker-rail");
+    const newCard = within(rail).getByTestId("new-play-set-card");
+    const existingCard = within(rail).getByTestId(`play-set-card-${playSet2.id}`);
+
+    expect(newCard.compareDocumentPosition(existingCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(rail).getByRole("button", { name: "Play Set 1" }));
+
+    expect(screen.queryByTestId("play-set-picker-rail")).not.toBeInTheDocument();
+    expect(screen.getByTestId("play-set-picker-trigger")).toHaveTextContent("Play Set 1");
+  });
+
+  it("shows a fallback play set label and supports creating a new set from the picker rail", async () => {
+    render(<AppShell backend={createMemoryBackend({ initialPlaySets: [], initialPlays: [] })} />);
+
+    const trigger = await screen.findByTestId("play-set-picker-trigger");
+    expect(trigger).toHaveTextContent("Select a Play Set");
+
+    fireEvent.click(trigger);
+    const rail = await screen.findByTestId("play-set-picker-rail");
+    fireEvent.click(within(rail).getByRole("button", { name: "New Play Set" }));
+
+    expect(await screen.findByText("Create your first play")).toBeInTheDocument();
+    expect(screen.queryByTestId("play-set-picker-rail")).not.toBeInTheDocument();
+    expect(screen.getByTestId("play-set-picker-trigger")).toHaveTextContent("Play Set 1");
+  });
+
+  it("shows overlay arrows for an overflowing play set rail and scrolls by one tile", async () => {
+    const playSets = ["Play Set 1", "Play Set 2", "Play Set 3"].map((name, index) => ({
+      ...createPlaySet(name),
+      createdAt: `2026-04-12T1${index}:00:00.000Z`,
+      updatedAt: `2026-04-12T1${index}:00:00.000Z`,
+    }));
+
+    render(
+      <PlayLibrary
+        activePlayId={null}
+        activePlaySetId={playSets[0].id}
+        onCreatePlay={() => undefined}
+        onCreatePlaySet={() => undefined}
+        onDeletePlay={() => undefined}
+        onDeletePlaySet={() => undefined}
+        onDuplicatePlay={() => undefined}
+        onDuplicatePlaySet={() => undefined}
+        onMovePlay={() => undefined}
+        onSelectPlay={() => undefined}
+        onSelectPlaySet={() => undefined}
+        playSets={playSets}
+        plays={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("play-set-picker-trigger"));
+
+    const rail = await screen.findByTestId("play-set-picker-rail");
+    const newPlaySetCard = screen.getByTestId("new-play-set-card");
+    const scrollBy = vi.fn();
+
+    Object.defineProperty(rail, "clientWidth", { configurable: true, value: 320 });
+    Object.defineProperty(rail, "scrollWidth", { configurable: true, value: 960 });
+    Object.defineProperty(rail, "scrollLeft", { configurable: true, writable: true, value: 0 });
+    Object.defineProperty(rail, "scrollBy", { configurable: true, value: scrollBy });
+    Object.defineProperty(newPlaySetCard, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        width: 232,
+        height: 184,
+        top: 0,
+        left: 0,
+        right: 232,
+        bottom: 184,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll play sets right" }));
+
+    expect(scrollBy).toHaveBeenCalledWith({ behavior: "smooth", left: 240 });
   });
 
   it("creates a play set without auto-creating a play", async () => {
