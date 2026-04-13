@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { convertPrintMeasurement, getPlaySetCardDimensions, isLandscapeCard, normalizePlaySetSettings } from "../lib/playbook";
+import { PageLayoutPreview } from "./PageLayoutPreview";
+import { convertPrintMeasurement, isLandscapeCard, normalizePlaySetSettings } from "../lib/playbook";
 import type { PlaySetSettings, PlayerCount, Unit } from "../lib/types";
 
 interface CreatePlaySetModalProps {
@@ -69,8 +70,6 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
       cardAspectRatio: 1,
     },
   });
-  const cardDimensions = getPlaySetCardDimensions(draftSettings);
-  const previewAspect = cardDimensions.width / cardDimensions.height;
   const hasValidCardRatio = isLandscapeCard(draftSettings);
 
   return (
@@ -195,24 +194,8 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
           </div>
 
           <div>
-            <p className="mb-2 text-sm font-semibold text-ink-950/70">Card preview</p>
-            <div className="rounded-[24px] border border-dashed border-ink-950/15 bg-field-50/70 p-4">
-              <div
-                className="mx-auto rounded-2xl border border-ink-950/20 bg-[#fff8ee] shadow-sm"
-                style={{
-                  aspectRatio: `${previewAspect}`,
-                  maxWidth: "100%",
-                  minHeight: 90,
-                  width: previewAspect >= 1 ? "100%" : `${previewAspect * 100}%`,
-                }}
-              >
-                <div className="flex h-full items-center justify-center text-center text-sm text-ink-950/60">
-                  {rowsPerPage} rows × {columnsPerPage} cols
-                  <br />
-                  {cardDimensions.width} x {cardDimensions.height} {printUnit} card
-                </div>
-              </div>
-            </div>
+            <p className="mb-2 text-sm font-semibold text-ink-950/70">Page preview</p>
+            <PageLayoutPreview settings={draftSettings} />
             {!hasValidCardRatio ? (
               <p className="mt-2 text-sm font-semibold text-red-700">
                 Printable cards must be square or wider than tall. Adjust the page size or row/column count.

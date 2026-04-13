@@ -6,6 +6,7 @@ import {
   createPlaySet,
   getEditorFieldLayout,
   getPlaySetCardDimensions,
+  getPlaySetPrintLayoutMetrics,
   isLandscapeCard,
   normalizePlayDisplaySettings,
   normalizePlaySetSettings,
@@ -42,8 +43,8 @@ describe("playbook helpers", () => {
     const squareSettings = normalizePlaySetSettings({
       print: {
         presetId: null,
-        width: 3.16,
-        height: 2.08,
+        width: 3,
+        height: 2,
         unit: "in",
       },
       layout: {
@@ -76,8 +77,8 @@ describe("playbook helpers", () => {
     const settings = normalizePlaySetSettings({
       print: {
         presetId: null,
-        width: 3.16,
-        height: 2.08,
+        width: 3,
+        height: 2,
         unit: "in",
       },
       layout: {
@@ -93,6 +94,34 @@ describe("playbook helpers", () => {
     expect(layout.width).toBe(120);
     expect(layout.height).toBe(120);
     expect(layout.lineOfScrimmageY).toBe(84);
+  });
+
+  it("shares print layout metrics across preview and export math", () => {
+    const settings = normalizePlaySetSettings({
+      print: {
+        presetId: null,
+        width: 3.5,
+        height: 1,
+        unit: "in",
+      },
+      layout: {
+        rowsPerPage: 3,
+        columnsPerPage: 3,
+        playsPerPage: 1,
+        cardAspectRatio: 1,
+      },
+    });
+
+    expect(getPlaySetPrintLayoutMetrics(settings)).toEqual({
+      pageWidth: 3.5,
+      pageHeight: 1,
+      spacing: 0,
+      columnsPerPage: 3,
+      rowsPerPage: 3,
+      playsPerPage: 9,
+      cardWidth: 1.167,
+      cardHeight: 0.333,
+    });
   });
 
   it("creates a play from Play Set defaults", () => {

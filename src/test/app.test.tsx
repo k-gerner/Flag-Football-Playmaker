@@ -163,10 +163,11 @@ describe("AppShell", () => {
 
     fireEvent.change(rowsInput, { target: { value: "2" } });
     fireEvent.change(columnsInput, { target: { value: "3" } });
-    fireEvent.change(widthInput, { target: { value: "3.16" } });
-    fireEvent.change(heightInput, { target: { value: "2.08" } });
+    fireEvent.change(widthInput, { target: { value: "3" } });
+    fireEvent.change(heightInput, { target: { value: "2" } });
 
     expect(within(modal).getByText(/2 rows × 3 cols/i)).toBeInTheDocument();
+    expect(within(modal).getAllByTestId("page-layout-preview-card")).toHaveLength(6);
     expect(within(rail).getByText("4x1")).toBeInTheDocument();
     expect(within(rail).queryByText("2x3")).not.toBeInTheDocument();
 
@@ -249,8 +250,8 @@ describe("AppShell", () => {
 
     fireEvent.change(inputs[0], { target: { value: "2" } });
     fireEvent.change(inputs[1], { target: { value: "3" } });
-    fireEvent.change(inputs[2], { target: { value: "3.16" } });
-    fireEvent.change(inputs[3], { target: { value: "2.08" } });
+    fireEvent.change(inputs[2], { target: { value: "3" } });
+    fireEvent.change(inputs[3], { target: { value: "2" } });
     fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
@@ -277,11 +278,12 @@ describe("AppShell", () => {
       target: { value: "3" },
     });
     fireEvent.change(screen.getByDisplayValue("8.5"), {
-      target: { value: "3.16" },
+      target: { value: "3" },
     });
     fireEvent.change(screen.getByDisplayValue("11"), {
-      target: { value: "2.08" },
+      target: { value: "2" },
     });
+    expect(screen.getAllByTestId("page-layout-preview-card")).toHaveLength(6);
     fireEvent.click(screen.getByRole("button", { name: "Create Play Set" }));
 
     expect(await screen.findByText("Create your first play")).toBeInTheDocument();

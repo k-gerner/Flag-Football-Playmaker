@@ -84,7 +84,7 @@ export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
     rowsPerPage: 4,
     columnsPerPage: 1,
     playsPerPage: 4,
-    cardAspectRatio: Number((8.5 / ((11 - getPrintSpacing("in") * 3) / 4)).toFixed(3)),
+    cardAspectRatio: Number((8.5 / (11 / 4)).toFixed(3)),
   },
   export: {
     includePlayNumber: true,
@@ -93,7 +93,11 @@ export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
 };
 
 export function getPrintSpacing(unit: PrintSettings["unit"]) {
-  return unit === "in" ? 0.08 : 0.2;
+  return unit === "in" ? 0 : 0;
+}
+
+export function getPrintCardInset(unit: PrintSettings["unit"]) {
+  return unit === "in" ? 0.04 : 0.1;
 }
 
 export function convertPrintMeasurement(value: number, fromUnit: Unit, toUnit: Unit) {
@@ -120,6 +124,24 @@ export function getPlaySetCardDimensions(settings: PlaySetSettings) {
   return {
     width: Number(width.toFixed(3)),
     height: Number(height.toFixed(3)),
+  };
+}
+
+export function getPlaySetPrintLayoutMetrics(settings: PlaySetSettings) {
+  const spacing = getPrintSpacing(settings.print.unit);
+  const columnsPerPage = Math.max(1, settings.layout.columnsPerPage);
+  const rowsPerPage = Math.max(1, settings.layout.rowsPerPage);
+  const { width: cardWidth, height: cardHeight } = getPlaySetCardDimensions(settings);
+
+  return {
+    pageWidth: settings.print.width,
+    pageHeight: settings.print.height,
+    spacing,
+    columnsPerPage,
+    rowsPerPage,
+    playsPerPage: rowsPerPage * columnsPerPage,
+    cardWidth,
+    cardHeight,
   };
 }
 

@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import "svg2pdf.js";
-import { getPlaySetCardDimensions, getPrintSpacing } from "./playbook";
+import { getPlaySetPrintLayoutMetrics, getPrintCardInset } from "./playbook";
 import type { PlayDocument, PlaySet } from "./types";
 
 function getCardTitle(playSet: PlaySet, play: PlayDocument) {
@@ -24,6 +24,10 @@ function createDoc(playSet: PlaySet, pageHeight: number) {
   });
 }
 
+function getPrintCardBorderWidth(playSet: PlaySet) {
+  return playSet.settings.print.unit === "in" ? 0.005 : 0.015;
+}
+
 async function drawPlayCard(
   doc: jsPDF,
   playSet: PlaySet,
@@ -32,14 +36,16 @@ async function drawPlayCard(
   x: number,
   y: number,
 ) {
-  const { width: cardWidth, height: cardHeight } = getPlaySetCardDimensions(playSet.settings);
-  const spacing = getPrintSpacing(playSet.settings.print.unit);
+  const { cardWidth, cardHeight } = getPlaySetPrintLayoutMetrics(playSet.settings);
   const title = getCardTitle(playSet, play);
   const titleHeight = title ? cardHeight * 0.16 : 0;
-  const boardMargin = spacing;
+  const boardMargin = getPrintCardInset(playSet.settings.print.unit);
+  const borderWidth = getPrintCardBorderWidth(playSet);
 
   doc.setFillColor(playSet.settings.field.backgroundColor);
-  doc.roundedRect(x, y, cardWidth, cardHeight, spacing, spacing, "F");
+  doc.setDrawColor(24, 39, 48);
+  doc.setLineWidth(borderWidth);
+  doc.rect(x, y, cardWidth, cardHeight, "FD");
 
   if (title) {
     doc.setTextColor(24, 39, 48);
@@ -68,7 +74,7 @@ export async function exportPlayToPdf(
 ) {
   const pageHeight = playSet.settings.print.height;
   const doc = createDoc(playSet, pageHeight);
-  const { width: cardWidth, height: cardHeight } = getPlaySetCardDimensions(playSet.settings);
+  const { cardWidth, cardHeight } = getPlaySetPrintLayoutMetrics(playSet.settings);
   const x = Math.max(0, (playSet.settings.print.width - cardWidth) / 2);
   const y = Math.max(0, (pageHeight - cardHeight) / 2);
 
@@ -82,12 +88,8 @@ export async function exportPlaySetToPdf(
   svgMap: Record<string, SVGSVGElement | null>,
 ) {
   const orderedPlays = [...plays].sort((a, b) => a.playNumber - b.playNumber);
-  const spacing = getPrintSpacing(playSet.settings.print.unit);
-  const pageHeight = playSet.settings.print.height;
-  const pageWidth = playSet.settings.print.width;
-  const { width: cardWidth, height: cardHeight } = getPlaySetCardDimensions(playSet.settings);
-  const columnsPerPage = Math.max(1, playSet.settings.layout.columnsPerPage);
-  const playsPerPage = Math.max(1, playSet.settings.layout.playsPerPage);
+  const { spacing, pageHeight, pageWidth, cardWidth, cardHeight, columnsPerPage, playsPerPage } =
+    getPlaySetPrintLayoutMetrics(playSet.settings);
   const doc = createDoc(playSet, pageHeight);
 
   for (const [index, play] of orderedPlays.entries()) {
