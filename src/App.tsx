@@ -7,6 +7,7 @@ import { Playboard } from "./components/Playboard";
 import { PlaySetSettingsModal } from "./components/PlaySetSettingsModal";
 import { Toolbar } from "./components/Toolbar";
 import { createMemoryBackend, supabaseBackend, type AppBackend } from "./lib/backend";
+import { getPathLength, MIN_FREEHAND_PATH_LENGTH, processFreehandStroke } from "./lib/geometry";
 import { exportPlaySetToPdf } from "./lib/pdf";
 import { makeId } from "./lib/id";
 import {
@@ -29,6 +30,8 @@ import type {
   PlayerToken,
   Point,
   RoutePath,
+  RouteKind,
+  TextAnnotation,
   ToolMode,
 } from "./lib/types";
 
@@ -37,6 +40,13 @@ interface AppShellProps {
 }
 
 type PlayInspectorDraft = Pick<PlayDocument, "name" | "notes" | "displaySettings">;
+type BoardSnapshot = Pick<PlayDocument, "players" | "paths" | "handoffs" | "textAnnotations">;
+type BoardHistoryState = {
+  past: BoardSnapshot[];
+  future: BoardSnapshot[];
+};
+
+const BOARD_HISTORY_LIMIT = 50;
 
 function SetupPanel() {
   return (
@@ -92,6 +102,43 @@ function hasInspectorDraftChanges(play: PlayDocument, draft: PlayInspectorDraft)
   );
 }
 
+function cloneBoardSnapshot(snapshot: BoardSnapshot): BoardSnapshot {
+  return {
+    players: snapshot.players.map((player) => ({ ...player })),
+    paths: snapshot.paths.map((path) => ({
+      ...path,
+      points: path.points.map((point) => ({ ...point })),
+    })),
+    handoffs: snapshot.handoffs.map((handoff) => ({ ...handoff })),
+    textAnnotations: snapshot.textAnnotations.map((textAnnotation) => ({ ...textAnnotation })),
+  };
+}
+
+function getBoardSnapshot(play: PlayDocument): BoardSnapshot {
+  return cloneBoardSnapshot({
+    players: play.players,
+    paths: play.paths,
+    handoffs: play.handoffs,
+    textAnnotations: play.textAnnotations,
+  });
+}
+
+function boardSnapshotsEqual(a: BoardSnapshot | null | undefined, b: BoardSnapshot | null | undefined) {
+  if (!a || !b) {
+    return false;
+  }
+
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function isEditableShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
 export function AppShell({ backend }: AppShellProps) {
   const [authState, setAuthState] = useState<AuthSessionState>({
     status: "loading",
@@ -113,12 +160,19 @@ export function AppShell({ backend }: AppShellProps) {
   const [tool, setTool] = useState<ToolMode>("select");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [draftPath, setDraftPath] = useState<DraftPath | null>(null);
   const [handoffSourceId, setHandoffSourceId] = useState<string | null>(null);
+  const [selectedTextFocusToken, setSelectedTextFocusToken] = useState(0);
 
   const playSaveTimers = useRef<Record<string, number>>({});
   const playSetSaveTimers = useRef<Record<string, number>>({});
   const exportSvgRefs = useRef<Record<string, SVGSVGElement | null>>({});
+  const boardHistoryRef = useRef<Record<string, BoardHistoryState>>({});
+  const activeTextEditRef = useRef<{ playId: string | null; textId: string | null }>({
+    playId: null,
+    textId: null,
+  });
 
   const activePlaySet = playSets.find((playSet) => playSet.id === activePlaySetId) ?? null;
   const activeSetPlays = activePlaySetId ? playsBySetId[activePlaySetId] ?? [] : [];
@@ -129,15 +183,28 @@ export function AppShell({ backend }: AppShellProps) {
     : null;
   const selectedPlayer = activePlay?.players.find((player) => player.id === selectedPlayerId) ?? null;
   const selectedPath = activePlay?.paths.find((path) => path.id === selectedPathId) ?? null;
+  const selectedText = activePlay?.textAnnotations.find((textAnnotation) => textAnnotation.id === selectedTextId) ?? null;
   const hasPlaySets = playSets.length > 0;
+  const activeBoardHistory = persistedActivePlay ? boardHistoryRef.current[persistedActivePlay.id] : null;
+  const canUndo = (activeBoardHistory?.past.length ?? 0) > 0;
+  const canRedo = (activeBoardHistory?.future.length ?? 0) > 0;
 
   const userId = authState.user?.id ?? null;
+
+  const resetActiveTextEdit = () => {
+    activeTextEditRef.current = {
+      playId: null,
+      textId: null,
+    };
+  };
 
   const clearTransientState = () => {
     setSelectedPlayerId(null);
     setSelectedPathId(null);
+    setSelectedTextId(null);
     setDraftPath(null);
     setHandoffSourceId(null);
+    resetActiveTextEdit();
   };
 
   const clearSaveTimers = () => {
@@ -242,6 +309,111 @@ export function AppShell({ backend }: AppShellProps) {
     }
   }
 
+  function getBoardHistoryState(playId: string): BoardHistoryState {
+    const existing = boardHistoryRef.current[playId];
+    if (existing) {
+      return existing;
+    }
+
+    const created: BoardHistoryState = {
+      past: [],
+      future: [],
+    };
+    boardHistoryRef.current[playId] = created;
+    return created;
+  }
+
+  function pushBoardHistorySnapshot(play = persistedActivePlay) {
+    if (!play) {
+      return;
+    }
+
+    const history = getBoardHistoryState(play.id);
+    const snapshot = getBoardSnapshot(play);
+    const lastSnapshot = history.past[history.past.length - 1];
+
+    if (boardSnapshotsEqual(lastSnapshot, snapshot)) {
+      history.future = [];
+      return;
+    }
+
+    history.past = [...history.past.slice(-(BOARD_HISTORY_LIMIT - 1)), cloneBoardSnapshot(snapshot)];
+    history.future = [];
+  }
+
+  function applyBoardSnapshot(snapshot: BoardSnapshot) {
+    resetActiveTextEdit();
+    updateActivePlay((play) => ({
+      ...play,
+      players: snapshot.players.map((player) => ({ ...player })),
+      paths: snapshot.paths.map((path) => ({
+        ...path,
+        points: path.points.map((point) => ({ ...point })),
+      })),
+      handoffs: snapshot.handoffs.map((handoff) => ({ ...handoff })),
+      textAnnotations: snapshot.textAnnotations.map((textAnnotation) => ({ ...textAnnotation })),
+    }));
+  }
+
+  function handleUndoBoardChange() {
+    if (!persistedActivePlay) {
+      return;
+    }
+
+    const history = getBoardHistoryState(persistedActivePlay.id);
+    const previousSnapshot = history.past.pop();
+    if (!previousSnapshot) {
+      return;
+    }
+
+    history.future = [getBoardSnapshot(persistedActivePlay), ...history.future].slice(0, BOARD_HISTORY_LIMIT);
+    applyBoardSnapshot(previousSnapshot);
+    setDraftPath(null);
+    setHandoffSourceId(null);
+  }
+
+  function handleRedoBoardChange() {
+    if (!persistedActivePlay) {
+      return;
+    }
+
+    const history = getBoardHistoryState(persistedActivePlay.id);
+    const nextSnapshot = history.future.shift();
+    if (!nextSnapshot) {
+      return;
+    }
+
+    history.past = [...history.past.slice(-(BOARD_HISTORY_LIMIT - 1)), getBoardSnapshot(persistedActivePlay)];
+    applyBoardSnapshot(nextSnapshot);
+    setDraftPath(null);
+    setHandoffSourceId(null);
+  }
+
+  function beginTextEditSession(textId: string) {
+    if (!persistedActivePlay) {
+      return;
+    }
+
+    const activeSession = activeTextEditRef.current;
+    if (activeSession.playId === persistedActivePlay.id && activeSession.textId === textId) {
+      return;
+    }
+
+    pushBoardHistorySnapshot();
+    activeTextEditRef.current = {
+      playId: persistedActivePlay.id,
+      textId,
+    };
+  }
+
+  function endTextEditSession(textId?: string) {
+    if (textId && activeTextEditRef.current.textId !== textId) {
+      return;
+    }
+
+    resetActiveTextEdit();
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -268,6 +440,7 @@ export function AppShell({ backend }: AppShellProps) {
       setPlaySets([]);
       setPlaysBySetId({});
       setPlayInspectorDrafts({});
+      boardHistoryRef.current = {};
       setActivePlaySetId(null);
       setActivePlayId(null);
       clearTransientState();
@@ -308,6 +481,65 @@ export function AppShell({ backend }: AppShellProps) {
     const validPlayIds = new Set(Object.values(playsBySetId).flat().map((play) => play.id));
     setPlayInspectorDrafts((current) => Object.fromEntries(Object.entries(current).filter(([playId]) => validPlayIds.has(playId))));
   }, [playsBySetId]);
+
+  useEffect(() => {
+    if (!activePlay) {
+      setSelectedPlayerId(null);
+      setSelectedPathId(null);
+      setSelectedTextId(null);
+      resetActiveTextEdit();
+      return;
+    }
+
+    if (selectedPlayerId && !activePlay.players.some((player) => player.id === selectedPlayerId)) {
+      setSelectedPlayerId(null);
+    }
+
+    if (selectedPathId && !activePlay.paths.some((path) => path.id === selectedPathId)) {
+      setSelectedPathId(null);
+    }
+
+    if (selectedTextId && !activePlay.textAnnotations.some((textAnnotation) => textAnnotation.id === selectedTextId)) {
+      setSelectedTextId(null);
+      endTextEditSession();
+    }
+  }, [activePlay, selectedPathId, selectedPlayerId, selectedTextId]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target)) {
+        return;
+      }
+
+      const hasModifier = event.metaKey || event.ctrlKey;
+      if (!hasModifier) {
+        return;
+      }
+
+      const lowerKey = event.key.toLowerCase();
+      if (lowerKey === "z" && event.shiftKey) {
+        event.preventDefault();
+        handleRedoBoardChange();
+        return;
+      }
+
+      if (lowerKey === "z") {
+        event.preventDefault();
+        handleUndoBoardChange();
+        return;
+      }
+
+      if (lowerKey === "y" && event.ctrlKey) {
+        event.preventDefault();
+        handleRedoBoardChange();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [persistedActivePlay]);
 
   const setScopedPlaySets = useMemo(() => playSets, [playSets]);
 
@@ -646,14 +878,15 @@ export function AppShell({ backend }: AppShellProps) {
     if (tool === "select") {
       setSelectedPlayerId(playerId);
       setSelectedPathId(null);
+      setSelectedTextId(null);
       return;
     }
 
     if (tool === "route" || tool === "motion") {
       setSelectedPlayerId(playerId);
       setSelectedPathId(null);
+      setSelectedTextId(null);
       setHandoffSourceId(null);
-      setDraftPath({ playerId, kind: tool, points: [] });
       return;
     }
 
@@ -661,6 +894,7 @@ export function AppShell({ backend }: AppShellProps) {
       setHandoffSourceId(playerId);
       setSelectedPlayerId(playerId);
       setSelectedPathId(null);
+      setSelectedTextId(null);
       return;
     }
 
@@ -675,6 +909,7 @@ export function AppShell({ backend }: AppShellProps) {
       toPlayerId: playerId,
     };
 
+    pushBoardHistorySnapshot();
     updateActivePlay((play) => ({
       ...play,
       handoffs: [
@@ -692,44 +927,86 @@ export function AppShell({ backend }: AppShellProps) {
   }
 
   function handleBoardPress(point: Point) {
-    if (!draftPath || !activePlay) {
+    if (!activePlay || tool !== "text") {
       return;
     }
 
-    setDraftPath((current) =>
-      current
-        ? {
-            ...current,
-            points: [...current.points, point],
-          }
-        : null,
-    );
+    const nextTextAnnotation: TextAnnotation = {
+      id: makeId("text"),
+      x: point.x,
+      y: point.y,
+      text: "Text",
+    };
+
+    pushBoardHistorySnapshot();
+    updateActivePlay((play) => ({
+      ...play,
+      textAnnotations: [...play.textAnnotations, nextTextAnnotation],
+    }));
+    setSelectedPlayerId(null);
+    setSelectedPathId(null);
+    setSelectedTextId(nextTextAnnotation.id);
+    setSelectedTextFocusToken((current) => current + 1);
+    setHandoffSourceId(null);
   }
 
-  function handleFinishDraft() {
-    if (!activePlay || !draftPath || draftPath.points.length === 0) {
+  function handleStartDraftPath(playerId: string, kind: RouteKind) {
+    setDraftPath({ playerId, kind, points: [] });
+  }
+
+  function handleUpdateDraftPath(points: Point[]) {
+    setDraftPath((current) => (current ? { ...current, points } : null));
+  }
+
+  function handleCommitDraftPath(playerId: string, kind: RouteKind, points: Point[]) {
+    if (!activePlay) {
+      setDraftPath(null);
+      return;
+    }
+
+    const player = activePlay.players.find((item) => item.id === playerId);
+    if (!player) {
+      setDraftPath(null);
+      return;
+    }
+
+    const processedStroke = processFreehandStroke([player, ...points]);
+    if (processedStroke.length < 2 || getPathLength(processedStroke) < MIN_FREEHAND_PATH_LENGTH) {
+      setDraftPath(null);
+      return;
+    }
+
+    const nextPoints = processedStroke.slice(1);
+    if (nextPoints.length === 0) {
+      setDraftPath(null);
       return;
     }
 
     const nextPath: RoutePath = {
       id: makeId("path"),
-      playerId: draftPath.playerId,
-      kind: draftPath.kind,
-      points: draftPath.points,
+      playerId,
+      kind,
+      points: nextPoints,
       arrowEnd: true,
     };
 
+    pushBoardHistorySnapshot();
     updateActivePlay((play) => ({
       ...play,
-      paths: [...play.paths.filter((path) => path.playerId !== draftPath.playerId), nextPath],
+      paths: [...play.paths.filter((path) => path.playerId !== playerId), nextPath],
     }));
     setDraftPath(null);
     setSelectedPlayerId(nextPath.playerId);
     setSelectedPathId(nextPath.id);
+    setSelectedTextId(null);
   }
 
   function handleCancelDraft() {
     setDraftPath(null);
+  }
+
+  function handleStartMovePlayer() {
+    pushBoardHistorySnapshot();
   }
 
   function handleMovePlayer(playerId: string, point: Point) {
@@ -739,6 +1016,10 @@ export function AppShell({ backend }: AppShellProps) {
         player.id === playerId ? { ...player, ...point } : player,
       ),
     }));
+  }
+
+  function handleStartMovePathPoint() {
+    pushBoardHistorySnapshot();
   }
 
   function handleMovePathPoint(pathId: string, pointIndex: number, point: Point) {
@@ -755,10 +1036,39 @@ export function AppShell({ backend }: AppShellProps) {
     }));
   }
 
+  function handleSelectText(textId: string) {
+    setSelectedTextId(textId);
+    setSelectedPlayerId(null);
+    setSelectedPathId(null);
+  }
+
+  function handleStartMoveText() {
+    pushBoardHistorySnapshot();
+  }
+
+  function handleMoveText(textId: string, point: Point) {
+    updateActivePlay((play) => ({
+      ...play,
+      textAnnotations: play.textAnnotations.map((textAnnotation) =>
+        textAnnotation.id === textId ? { ...textAnnotation, ...point } : textAnnotation,
+      ),
+    }));
+  }
+
   function handlePlayerUpdate(playerId: string, changes: Partial<Pick<PlayerToken, "label" | "color">>) {
+    pushBoardHistorySnapshot();
     updateActivePlay((play) => ({
       ...play,
       players: play.players.map((player) => (player.id === playerId ? { ...player, ...changes } : player)),
+    }));
+  }
+
+  function handleTextAnnotationChange(textId: string, text: string) {
+    updateActivePlay((play) => ({
+      ...play,
+      textAnnotations: play.textAnnotations.map((textAnnotation) =>
+        textAnnotation.id === textId ? { ...textAnnotation, text } : textAnnotation,
+      ),
     }));
   }
 
@@ -767,11 +1077,26 @@ export function AppShell({ backend }: AppShellProps) {
       return;
     }
 
+    pushBoardHistorySnapshot();
     updateActivePlay((play) => ({
       ...play,
       paths: play.paths.filter((path) => path.id !== selectedPathId),
     }));
     setSelectedPathId(null);
+  }
+
+  function handleDeleteSelectedText() {
+    if (!selectedTextId) {
+      return;
+    }
+
+    pushBoardHistorySnapshot();
+    updateActivePlay((play) => ({
+      ...play,
+      textAnnotations: play.textAnnotations.filter((textAnnotation) => textAnnotation.id !== selectedTextId),
+    }));
+    setSelectedTextId(null);
+    endTextEditSession(selectedTextId);
   }
 
   async function handleExportPlaySet() {
@@ -855,16 +1180,18 @@ export function AppShell({ backend }: AppShellProps) {
           <main className="flex min-w-0 flex-col gap-5">
             {activePlay ? (
               <Toolbar
+                canRedo={canRedo}
+                canUndo={canUndo}
                 draftPath={draftPath}
-                onCancelDraft={handleCancelDraft}
-                onFinishDraft={handleFinishDraft}
+                onRedo={handleRedoBoardChange}
                 onToolChange={(nextTool) => {
                   setTool(nextTool);
                   setHandoffSourceId(null);
-                  if (nextTool === "select") {
+                  if (nextTool !== "route" && nextTool !== "motion") {
                     setDraftPath(null);
                   }
                 }}
+                onUndo={handleUndoBoardChange}
                 tool={tool}
               />
             ) : (
@@ -888,11 +1215,13 @@ export function AppShell({ backend }: AppShellProps) {
                     </p>
                     <p className="text-sm text-white/70">
                       {draftPath
-                        ? "Click on the board to add route points, then finish the path."
+                        ? "Release to commit the path."
                         : tool === "handoff"
                           ? handoffSourceId
                             ? "Choose the receiving player to create the handoff."
                             : "Choose the ball carrier, then the receiving player."
+                          : tool === "text"
+                            ? "Click anywhere on the board to drop a note."
                           : "Use select mode to drag players and edit route handles."}
                     </p>
                   </div>
@@ -907,20 +1236,31 @@ export function AppShell({ backend }: AppShellProps) {
                   onBackgroundPress={() => {
                     setSelectedPathId(null);
                     setSelectedPlayerId(null);
+                    setSelectedTextId(null);
                   }}
                   onBoardPress={handleBoardPress}
-                  onFinishDraftPath={handleFinishDraft}
+                  onCancelDraftPath={handleCancelDraft}
+                  onCommitDraftPath={handleCommitDraftPath}
                   onPathPointMove={handleMovePathPoint}
+                  onPathPointMoveStart={handleStartMovePathPoint}
                   onPathPress={(pathId) => {
                     setSelectedPathId(pathId);
                     setSelectedPlayerId(null);
+                    setSelectedTextId(null);
                   }}
                   onPlayerMove={handleMovePlayer}
+                  onPlayerMoveStart={handleStartMovePlayer}
                   onPlayerPress={handlePlayerPress}
+                  onStartDraftPath={handleStartDraftPath}
+                  onTextMove={handleMoveText}
+                  onTextMoveStart={handleStartMoveText}
+                  onTextPress={handleSelectText}
+                  onUpdateDraftPath={handleUpdateDraftPath}
                   play={activePlay}
                   playSetSettings={activePlaySet.settings}
                   selectedPathId={selectedPathId}
                   selectedPlayerId={selectedPlayerId}
+                  selectedTextId={selectedTextId}
                   tool={tool}
                 />
               </section>
@@ -970,6 +1310,7 @@ export function AppShell({ backend }: AppShellProps) {
               onCopyPlayToSet={handleCopyPlayToSet}
               onCopyTargetPlaySetChange={setCopyTargetPlaySetId}
               onDeleteSelectedPath={handleDeleteSelectedPath}
+              onDeleteSelectedText={handleDeleteSelectedText}
               onSavePlaySettings={() => void handleSaveActivePlaySettings()}
               onPlayDisplaySettingsChange={(displaySettings) => {
                 updateActivePlayInspectorDraft((play) => ({
@@ -980,12 +1321,17 @@ export function AppShell({ backend }: AppShellProps) {
               onPlayNameChange={(name) => updateActivePlayInspectorDraft((play) => ({ ...play, name }))}
               onPlayNotesChange={(notes) => updateActivePlayInspectorDraft((play) => ({ ...play, notes }))}
               onPlayerUpdate={handlePlayerUpdate}
+              onTextAnnotationChange={handleTextAnnotationChange}
+              onTextEditEnd={endTextEditSession}
+              onTextEditStart={beginTextEditSession}
               playSettingsDirty={Boolean(persistedActivePlay && playInspectorDrafts[persistedActivePlay.id])}
               play={activePlay}
               playSet={activePlaySet}
               playSets={playSets}
               selectedPath={selectedPath}
               selectedPlayer={selectedPlayer}
+              selectedText={selectedText}
+              selectedTextFocusToken={selectedTextFocusToken}
             />
           </div>
         </div>
@@ -1063,6 +1409,7 @@ export function AppShell({ backend }: AppShellProps) {
               }}
               selectedPathId={null}
               selectedPlayerId={null}
+              selectedTextId={null}
               tool="select"
             />
           ))}

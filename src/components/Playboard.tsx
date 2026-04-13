@@ -1,8 +1,13 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { clientToBoardPoint } from "../lib/geometry";
+import {
+  appendSampledPoint,
+  buildSmoothPathData,
+  clientToBoardPoint,
+  FREEHAND_SAMPLE_MIN_DISTANCE,
+} from "../lib/geometry";
 import { BOARD_THEME, buildPolylinePoints, clampPoint } from "../lib/playbook";
-import type { DraftPath, PlayDocument, PlaySetSettings, Point, ToolMode } from "../lib/types";
+import type { DraftPath, PlayDocument, PlaySetSettings, Point, RouteKind, ToolMode } from "../lib/types";
 
 interface PlayboardProps {
   play: PlayDocument;
@@ -10,6 +15,7 @@ interface PlayboardProps {
   tool: ToolMode;
   selectedPlayerId: string | null;
   selectedPathId: string | null;
+  selectedTextId: string | null;
   draftPath: DraftPath | null;
   handoffSourceId: string | null;
   interactive?: boolean;
@@ -19,14 +25,24 @@ interface PlayboardProps {
   onBoardPress?: (point: Point) => void;
   onBackgroundPress?: () => void;
   onPathPress?: (pathId: string) => void;
+  onTextPress?: (textId: string) => void;
+  onPlayerMoveStart?: (playerId: string) => void;
   onPlayerMove?: (playerId: string, point: Point) => void;
+  onPathPointMoveStart?: (pathId: string) => void;
   onPathPointMove?: (pathId: string, pointIndex: number, point: Point) => void;
-  onFinishDraftPath?: () => void;
+  onTextMoveStart?: (textId: string) => void;
+  onTextMove?: (textId: string, point: Point) => void;
+  onStartDraftPath?: (playerId: string, kind: RouteKind) => void;
+  onUpdateDraftPath?: (points: Point[]) => void;
+  onCommitDraftPath?: (playerId: string, kind: RouteKind, points: Point[]) => void;
+  onCancelDraftPath?: () => void;
 }
 
 type DragState =
   | { kind: "player"; playerId: string }
   | { kind: "point"; pathId: string; pointIndex: number }
+  | { kind: "text"; textId: string }
+  | { kind: "draft"; playerId: string; pathKind: RouteKind; points: Point[] }
   | null;
 
 const markerId = "play-arrow";
@@ -36,6 +52,11 @@ function getMidpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
+function getTextBoundsWidth(text: string) {
+  const displayText = text || "Text";
+  return Math.max(10, displayText.length * 2.4 + 4);
+}
+
 export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Playboard(
   {
     play,
@@ -43,6 +64,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
     tool,
     selectedPlayerId,
     selectedPathId,
+    selectedTextId,
     draftPath,
     handoffSourceId,
     interactive = true,
@@ -52,67 +74,141 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
     onBoardPress,
     onBackgroundPress,
     onPathPress,
+    onTextPress,
+    onPlayerMoveStart,
     onPlayerMove,
+    onPathPointMoveStart,
     onPathPointMove,
-    onFinishDraftPath,
+    onTextMoveStart,
+    onTextMove,
+    onStartDraftPath,
+    onUpdateDraftPath,
+    onCommitDraftPath,
+    onCancelDraftPath,
   },
   ref,
 ) {
   const localRef = useRef<SVGSVGElement | null>(null);
+  const dragStateRef = useRef<DragState>(null);
   const [dragState, setDragState] = useState<DragState>(null);
   const theme = BOARD_THEME;
   const layout = play.fieldLayout;
+
+  const updateDragState = (nextDragState: DragState) => {
+    dragStateRef.current = nextDragState;
+    setDragState(nextDragState);
+  };
+
+  const getBoardPoint = (clientX: number, clientY: number) => {
+    if (!localRef.current) {
+      return null;
+    }
+
+    return clampPoint(
+      clientToBoardPoint(clientX, clientY, localRef.current.getBoundingClientRect(), layout),
+      layout,
+    );
+  };
 
   useEffect(() => {
     if (!interactive || !dragState) {
       return undefined;
     }
 
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!localRef.current) {
+    const handlePointerMove = (event: PointerEvent | MouseEvent) => {
+      const currentDragState = dragStateRef.current;
+      if (!currentDragState) {
         return;
       }
 
-      const point = clampPoint(
-        clientToBoardPoint(
-          event.clientX,
-          event.clientY,
-          localRef.current.getBoundingClientRect(),
-          layout,
-        ),
-        layout,
-      );
-
-      if (dragState.kind === "player") {
-        onPlayerMove?.(dragState.playerId, point);
-      } else {
-        onPathPointMove?.(dragState.pathId, dragState.pointIndex, point);
+      const point = getBoardPoint(event.clientX, event.clientY);
+      if (!point) {
+        return;
       }
+
+      if (currentDragState.kind === "player") {
+        onPlayerMove?.(currentDragState.playerId, point);
+        return;
+      }
+
+      if (currentDragState.kind === "point") {
+        onPathPointMove?.(currentDragState.pathId, currentDragState.pointIndex, point);
+        return;
+      }
+
+      if (currentDragState.kind === "text") {
+        onTextMove?.(currentDragState.textId, point);
+        return;
+      }
+
+      const nextPoints = appendSampledPoint(currentDragState.points, point, FREEHAND_SAMPLE_MIN_DISTANCE);
+      if (nextPoints === currentDragState.points) {
+        return;
+      }
+
+      updateDragState({
+        ...currentDragState,
+        points: nextPoints,
+      });
+      onUpdateDraftPath?.(nextPoints);
     };
 
-    const handleMouseMove = (event: MouseEvent) => {
-      handlePointerMove(event as unknown as PointerEvent);
+    const handlePointerUp = (event: PointerEvent | MouseEvent) => {
+      const currentDragState = dragStateRef.current;
+      if (!currentDragState) {
+        return;
+      }
+
+      if (currentDragState.kind === "draft") {
+        const point = getBoardPoint(event.clientX, event.clientY);
+        const finalPoints = point
+          ? appendSampledPoint(currentDragState.points, point, FREEHAND_SAMPLE_MIN_DISTANCE, true)
+          : currentDragState.points;
+
+        if (finalPoints !== currentDragState.points) {
+          onUpdateDraftPath?.(finalPoints);
+        }
+
+        onCommitDraftPath?.(currentDragState.playerId, currentDragState.pathKind, finalPoints);
+      }
+
+      updateDragState(null);
     };
 
-    const handlePointerUp = () => {
-      setDragState(null);
+    const handlePointerCancel = () => {
+      if (dragStateRef.current?.kind === "draft") {
+        onCancelDraftPath?.();
+      }
+      updateDragState(null);
     };
 
     window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mousemove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("mouseup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
 
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mousemove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("mouseup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
     };
-  }, [dragState, interactive, layout, onPathPointMove, onPlayerMove]);
+  }, [
+    dragState,
+    interactive,
+    layout,
+    onCancelDraftPath,
+    onCommitDraftPath,
+    onPathPointMove,
+    onPlayerMove,
+    onTextMove,
+    onUpdateDraftPath,
+  ]);
 
   const handleBoardClick = (event: ReactMouseEvent<SVGSVGElement>) => {
-    if (!interactive || !localRef.current) {
+    if (!interactive) {
       return;
     }
 
@@ -121,29 +217,18 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
       return;
     }
 
-    if ((tool === "route" || tool === "motion") && draftPath) {
-      onBoardPress?.(
-        clampPoint(
-          clientToBoardPoint(event.clientX, event.clientY, localRef.current.getBoundingClientRect(), layout),
-          layout,
-        ),
-      );
+    const point = getBoardPoint(event.clientX, event.clientY);
+    if (!point) {
+      return;
+    }
+
+    if (tool === "text") {
+      onBoardPress?.(point);
       return;
     }
 
     if (tool === "select") {
       onBackgroundPress?.();
-    }
-  };
-
-  const handleDoubleClick = (event: ReactMouseEvent<SVGSVGElement>) => {
-    const target = event.target as Element;
-    if (target.closest("[data-stop-board-click='true']")) {
-      return;
-    }
-
-    if ((tool === "route" || tool === "motion") && draftPath && draftPath.points.length > 0) {
-      onFinishDraftPath?.();
     }
   };
 
@@ -159,7 +244,6 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
         className="relative z-10 block h-auto w-full"
         data-testid={enableTestIds ? "playboard" : undefined}
         onClick={handleBoardClick}
-        onDoubleClick={handleDoubleClick}
         preserveAspectRatio="none"
         ref={(node) => {
           localRef.current = node;
@@ -173,11 +257,29 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
         viewBox={`0 0 ${layout.width} ${layout.height}`}
       >
         <defs>
-          <marker id={markerId} markerHeight="6" markerWidth="6" orient="auto-start-reverse" refX="5" refY="3">
-            <path d="M 0 0 L 6 3 L 0 6 z" fill={theme.route} />
+          <marker
+            id={markerId}
+            markerHeight="3.2"
+            markerUnits="userSpaceOnUse"
+            markerWidth="3.2"
+            orient="auto-start-reverse"
+            refX="0"
+            refY="1.6"
+            viewBox="0 0 3.2 3.2"
+          >
+            <path d="M 0 0.3 L 3 1.6 L 0 2.9 z" fill={theme.route} />
           </marker>
-          <marker id={motionMarkerId} markerHeight="6" markerWidth="6" orient="auto-start-reverse" refX="5" refY="3">
-            <path d="M 0 0 L 6 3 L 0 6 z" fill={theme.motion} />
+          <marker
+            id={motionMarkerId}
+            markerHeight="3.2"
+            markerUnits="userSpaceOnUse"
+            markerWidth="3.2"
+            orient="auto-start-reverse"
+            refX="0"
+            refY="1.6"
+            viewBox="0 0 3.2 3.2"
+          >
+            <path d="M 0 0.3 L 3 1.6 L 0 2.9 z" fill={theme.motion} />
           </marker>
         </defs>
 
@@ -277,11 +379,12 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
             return null;
           }
 
-          const points = buildPolylinePoints(player, path).map((point) => `${point.x},${point.y}`).join(" ");
+          const pathData = buildSmoothPathData(buildPolylinePoints(player, path));
           const selected = path.id === selectedPathId;
           return (
             <g key={path.id}>
-              <polyline
+              <path
+                d={pathData}
                 data-path-id={path.id}
                 data-stop-board-click="true"
                 data-testid={enableTestIds ? `path-${path.id}` : undefined}
@@ -293,7 +396,6 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                     onPathPress?.(path.id);
                   }
                 }}
-                points={points}
                 stroke={path.kind === "route" ? theme.route : theme.motion}
                 strokeDasharray={path.kind === "motion" ? "3 2" : undefined}
                 strokeLinecap="round"
@@ -312,7 +414,8 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                       onPointerDown={(event: ReactPointerEvent<SVGCircleElement>) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        setDragState({ kind: "point", pathId: path.id, pointIndex });
+                        onPathPointMoveStart?.(path.id);
+                        updateDragState({ kind: "point", pathId: path.id, pointIndex });
                       }}
                       r="1.8"
                       stroke={theme.handleStroke}
@@ -324,28 +427,84 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
           );
         })}
 
-        {draftPath ? (() => {
-          const player = play.players.find((item) => item.id === draftPath.playerId);
-          if (!player) {
-            return null;
-          }
+        {draftPath
+          ? (() => {
+              const player = play.players.find((item) => item.id === draftPath.playerId);
+              if (!player) {
+                return null;
+              }
 
-          const points = [player, ...draftPath.points].map((point) => `${point.x},${point.y}`).join(" ");
+              const pathData = buildSmoothPathData([player, ...draftPath.points]);
+              return (
+                <path
+                  d={pathData}
+                  data-testid={enableTestIds ? "draft-path" : undefined}
+                  fill="none"
+                  markerEnd={`url(#${draftPath.kind === "route" ? markerId : motionMarkerId})`}
+                  stroke={draftPath.kind === "route" ? theme.route : theme.motion}
+                  strokeDasharray={draftPath.kind === "motion" ? "3 2" : undefined}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeOpacity="0.8"
+                  strokeWidth="1.2"
+                />
+              );
+            })()
+          : null}
+
+        {play.textAnnotations.map((textAnnotation) => {
+          const selected = textAnnotation.id === selectedTextId;
+          const displayText = textAnnotation.text || "Text";
+          const width = getTextBoundsWidth(displayText);
           return (
-            <polyline
-              data-testid={enableTestIds ? "draft-path" : undefined}
-              fill="none"
-              markerEnd={`url(#${draftPath.kind === "route" ? markerId : motionMarkerId})`}
-              points={points}
-              stroke={draftPath.kind === "route" ? theme.route : theme.motion}
-              strokeDasharray={draftPath.kind === "motion" ? "3 2" : undefined}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeOpacity="0.8"
-              strokeWidth="1.2"
-            />
+            <g
+              data-stop-board-click="true"
+              data-testid={enableTestIds ? `text-annotation-${textAnnotation.id}` : undefined}
+              key={textAnnotation.id}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (interactive) {
+                  onTextPress?.(textAnnotation.id);
+                }
+              }}
+              onPointerDown={(event: ReactPointerEvent<SVGGElement>) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!interactive) {
+                  return;
+                }
+
+                onTextPress?.(textAnnotation.id);
+                if (tool === "select") {
+                  onTextMoveStart?.(textAnnotation.id);
+                  updateDragState({ kind: "text", textId: textAnnotation.id });
+                }
+              }}
+            >
+              <rect
+                fill={selected ? "rgba(246, 232, 200, 0.9)" : "transparent"}
+                height="6.6"
+                rx="2"
+                stroke={selected ? theme.handleStroke : "transparent"}
+                strokeWidth="0.5"
+                width={width}
+                x={textAnnotation.x - width / 2}
+                y={textAnnotation.y - 3.7}
+              />
+              <text
+                dominantBaseline="middle"
+                fill={theme.route}
+                fontSize="3.5"
+                fontWeight="700"
+                textAnchor="middle"
+                x={textAnnotation.x}
+                y={textAnnotation.y}
+              >
+                {displayText}
+              </text>
+            </g>
           );
-        })() : null}
+        })}
 
         {play.players.map((player) => {
           const selected = player.id === selectedPlayerId;
@@ -363,8 +522,16 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                 }
 
                 onPlayerPress?.(player.id);
+
                 if (tool === "select") {
-                  setDragState({ kind: "player", playerId: player.id });
+                  onPlayerMoveStart?.(player.id);
+                  updateDragState({ kind: "player", playerId: player.id });
+                  return;
+                }
+
+                if (tool === "route" || tool === "motion") {
+                  onStartDraftPath?.(player.id, tool);
+                  updateDragState({ kind: "draft", playerId: player.id, pathKind: tool, points: [] });
                 }
               }}
             >

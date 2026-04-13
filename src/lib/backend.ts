@@ -1,4 +1,11 @@
-import { createPlayDocument, createPlaySet, normalizePlayDisplaySettings, normalizePlaySetSettings, toStoredPlayPayload } from "./playbook";
+import {
+  createPlayDocument,
+  createPlaySet,
+  normalizePlayDisplaySettings,
+  normalizePlaySetSettings,
+  normalizeStoredPlayPayload,
+  toStoredPlayPayload,
+} from "./playbook";
 import type {
   AuthSessionState,
   AuthUser,
@@ -79,8 +86,8 @@ function mapPlaySetRow(row: PlaySetRow): PlaySet {
 }
 
 function mapPlayRow(row: PlayRow): PlayDocument {
-  const payload = row.play_data_json;
-  const displaySettings = normalizePlayDisplaySettings(payload?.displaySettings);
+  const payload = normalizeStoredPlayPayload(row.play_data_json);
+  const displaySettings = normalizePlayDisplaySettings(payload.displaySettings);
 
   return {
     id: row.id,
@@ -88,17 +95,18 @@ function mapPlayRow(row: PlayRow): PlayDocument {
     name: row.name,
     notes: row.notes ?? "",
     playNumber: row.play_number,
-    fieldLayout: payload?.fieldLayout ?? createPlayDocument({
+    fieldLayout: payload.fieldLayout ?? createPlayDocument({
       playSetId: row.play_set_id,
       playNumber: row.play_number,
       settings: normalizePlaySetSettings(),
     }).fieldLayout,
-    players: payload?.players ?? [],
-    paths: payload?.paths ?? [],
-    handoffs: payload?.handoffs ?? [],
+    players: payload.players ?? [],
+    paths: payload.paths ?? [],
+    handoffs: payload.handoffs ?? [],
+    textAnnotations: payload.textAnnotations ?? [],
     displaySettings,
     updatedAt: row.updated_at,
-    schemaVersion: payload?.schemaVersion ?? 1,
+    schemaVersion: payload.schemaVersion ?? 2,
   };
 }
 

@@ -1,5 +1,5 @@
 export type PlayerCount = 5 | 7 | 8;
-export type ToolMode = "select" | "route" | "motion" | "handoff";
+export type ToolMode = "select" | "route" | "motion" | "handoff" | "text";
 export type RouteKind = "route" | "motion";
 export type Unit = "in" | "cm";
 
@@ -36,6 +36,13 @@ export interface HandoffMark {
   id: string;
   fromPlayerId: string;
   toPlayerId: string;
+}
+
+export interface TextAnnotation {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
 }
 
 export interface PrintSettings {
@@ -82,6 +89,7 @@ export interface PlayDocument {
   players: PlayerToken[];
   paths: RoutePath[];
   handoffs: HandoffMark[];
+  textAnnotations: TextAnnotation[];
   displaySettings: PlayDisplaySettings;
   updatedAt: string;
   schemaVersion: number;
@@ -117,6 +125,7 @@ export interface StoredPlayPayload {
   players?: PlayerToken[];
   paths?: RoutePath[];
   handoffs?: HandoffMark[];
+  textAnnotations?: TextAnnotation[];
   displaySettings?: Partial<PlayDisplaySettings>;
   schemaVersion?: number;
 }

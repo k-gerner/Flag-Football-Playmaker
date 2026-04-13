@@ -24,6 +24,17 @@ async function mockBoardRect() {
   return board;
 }
 
+function drawGesture(target: Element, points: Array<{ clientX: number; clientY: number }>) {
+  fireEvent.pointerDown(target, points[0]);
+
+  act(() => {
+    points.slice(1).forEach((point) => {
+      window.dispatchEvent(new MouseEvent("mousemove", point));
+    });
+    window.dispatchEvent(new MouseEvent("mouseup", points[points.length - 1]));
+  });
+}
+
 describe("AppShell", () => {
   it("shows the auth gate when signed out", async () => {
     const backend = createMemoryBackend({
@@ -423,32 +434,143 @@ describe("AppShell", () => {
     expect(await screen.findByTestId("playboard")).toBeInTheDocument();
   });
 
-  it("creates a route and keeps it anchored when the player moves", async () => {
+  it("creates a route with a freehand drag and keeps it anchored when the player moves", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
     await screen.findByTestId("playboard");
-    const board = await mockBoardRect();
+    await mockBoardRect();
     const layout = getEditorFieldLayout(normalizePlaySetSettings());
     const initialQuarterbackY = Number(((70 / 80) * layout.height).toFixed(3));
     const routeTargetY = Number(((200 / 800) * layout.height).toFixed(3));
     const movedQuarterbackY = Number(Math.min(layout.height - 4, (720 / 800) * layout.height).toFixed(3));
 
     fireEvent.click(screen.getByRole("button", { name: "Route" }));
-    fireEvent.pointerDown(screen.getByTestId("player-Q"), { clientX: 600, clientY: 700 });
-    fireEvent.click(board, { clientX: 600, clientY: 200 });
-    fireEvent.click(screen.getByRole("button", { name: "Finish path" }));
+    drawGesture(screen.getByTestId("player-Q"), [
+      { clientX: 600, clientY: 700 },
+      { clientX: 620, clientY: 520 },
+      { clientX: 610, clientY: 340 },
+      { clientX: 600, clientY: 200 },
+    ]);
 
     const path = screen.getByTestId(/path-/);
-    expect(path.getAttribute("points")).toBe(`60,${initialQuarterbackY} 60,${routeTargetY}`);
+    expect(path.getAttribute("d")).toContain(`M 60 ${initialQuarterbackY}`);
+    expect(path.getAttribute("d")).toContain(`60 ${routeTargetY}`);
 
     fireEvent.click(screen.getByRole("button", { name: "Select" }));
     await mockBoardRect();
-    fireEvent.pointerDown(screen.getByTestId("player-Q"), { clientX: 600, clientY: 700 });
-    act(() => {
-      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 560, clientY: 720 }));
-      window.dispatchEvent(new MouseEvent("mouseup"));
-    });
+    drawGesture(screen.getByTestId("player-Q"), [
+      { clientX: 600, clientY: 700 },
+      { clientX: 560, clientY: 720 },
+    ]);
 
-    expect(path.getAttribute("points")).toBe(`56,${movedQuarterbackY} 60,${routeTargetY}`);
+    expect(path.getAttribute("d")).toContain(`M 56 ${movedQuarterbackY}`);
+    expect(path.getAttribute("d")).toContain(`60 ${routeTargetY}`);
+  });
+
+  it("draws motion paths with the same freehand gesture flow", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+    await mockBoardRect();
+
+    fireEvent.click(screen.getByRole("button", { name: "Motion" }));
+    drawGesture(screen.getByTestId("player-Q"), [
+      { clientX: 600, clientY: 700 },
+      { clientX: 700, clientY: 660 },
+      { clientX: 760, clientY: 620 },
+    ]);
+
+    const path = screen.getByTestId(/path-/);
+    expect(path).toHaveAttribute("stroke-dasharray", "3 2");
+  });
+
+  it("ignores tiny accidental route drags", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+    await mockBoardRect();
+
+    fireEvent.click(screen.getByRole("button", { name: "Route" }));
+    drawGesture(screen.getByTestId("player-Q"), [
+      { clientX: 600, clientY: 700 },
+      { clientX: 603, clientY: 698 },
+      { clientX: 604, clientY: 697 },
+    ]);
+
+    expect(screen.queryByTestId(/path-/)).not.toBeInTheDocument();
+  });
+
+  it("supports undo and redo for route creation and player movement", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+    await mockBoardRect();
+
+    fireEvent.click(screen.getByRole("button", { name: "Route" }));
+    drawGesture(screen.getByTestId("player-Q"), [
+      { clientX: 600, clientY: 700 },
+      { clientX: 620, clientY: 520 },
+      { clientX: 600, clientY: 240 },
+    ]);
+
+    expect(screen.getByTestId(/path-/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.queryByTestId(/path-/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    expect(screen.getByTestId(/path-/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    const player = screen.getByTestId("player-Q");
+    drawGesture(player, [
+      { clientX: 600, clientY: 700 },
+      { clientX: 560, clientY: 720 },
+    ]);
+
+    const movedPlayerCircle = player.querySelector("circle");
+    expect(movedPlayerCircle).toHaveAttribute("cx", "56");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(movedPlayerCircle).toHaveAttribute("cx", "60");
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    expect(movedPlayerCircle).toHaveAttribute("cx", "56");
+  });
+
+  it("creates, edits, moves, and deletes text notes", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+    const board = await mockBoardRect();
+    const layout = getEditorFieldLayout(normalizePlaySetSettings());
+    const movedTextY = String((320 / 800) * layout.height);
+
+    fireEvent.click(screen.getByRole("button", { name: "Text" }));
+    fireEvent.click(board, { clientX: 320, clientY: 300 });
+
+    const textInput = screen.getByRole("textbox", { name: "Board text" });
+    expect(textInput).toHaveValue("Text");
+    expect(textInput).toHaveFocus();
+
+    fireEvent.change(textInput, { target: { value: "Screen" } });
+    expect(screen.getByDisplayValue("Screen")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    const textAnnotation = screen.getByTestId(/text-annotation-/);
+    drawGesture(textAnnotation, [
+      { clientX: 320, clientY: 300 },
+      { clientX: 360, clientY: 320 },
+    ]);
+
+    const annotationText = within(textAnnotation).getByText("Screen");
+    expect(annotationText).toHaveAttribute("x", "36");
+    expect(annotationText).toHaveAttribute("y", movedTextY);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+    expect(screen.queryByTestId(/text-annotation-/)).not.toBeInTheDocument();
+  });
+
+  it("ignores undo shortcuts while typing in board text", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+    const board = await mockBoardRect();
+
+    fireEvent.click(screen.getByRole("button", { name: "Text" }));
+    fireEvent.click(board, { clientX: 320, clientY: 300 });
+
+    const textInput = screen.getByRole("textbox", { name: "Board text" });
+    fireEvent.change(textInput, { target: { value: "Screen" } });
+    fireEvent.keyDown(textInput, { key: "z", metaKey: true });
+
+    expect(screen.getByDisplayValue("Screen")).toBeInTheDocument();
+    expect(within(screen.getByTestId(/text-annotation-/)).getByText("Screen")).toBeInTheDocument();
   });
 
   it("renders the default field surface without a field-style picker", async () => {

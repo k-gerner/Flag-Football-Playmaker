@@ -11,6 +11,7 @@ import type {
   PlaySet,
   PlaySetSettings,
   StoredPlayPayload,
+  TextAnnotation,
   Unit,
 } from "./types";
 
@@ -22,7 +23,7 @@ export const BOARD_LAYOUT: FieldLayout = {
   yardsInFront: 48,
 };
 
-export const CURRENT_PLAY_SCHEMA_VERSION = 1;
+export const CURRENT_PLAY_SCHEMA_VERSION = 2;
 
 export const BOARD_THEME = {
   cardBackground:
@@ -211,6 +212,17 @@ export function buildPolylinePoints(anchor: Point, path: RoutePath): Point[] {
   return [anchor, ...path.points];
 }
 
+function scalePoint(point: Point, currentLayout: FieldLayout, nextLayout: FieldLayout): Point {
+  return {
+    x: scaleValue(point.x, currentLayout.width, nextLayout.width),
+    y: scaleValue(point.y, currentLayout.height, nextLayout.height),
+  };
+}
+
+function cloneTextAnnotations(textAnnotations: TextAnnotation[]) {
+  return textAnnotations.map((textAnnotation) => ({ ...textAnnotation }));
+}
+
 export function createPlayers(playerCount: PlayerCount, layout: FieldLayout = BOARD_LAYOUT): PlayerToken[] {
   return PLAYER_LAYOUTS[playerCount].map((player) => ({
     ...player,
@@ -368,6 +380,7 @@ export function createPlayDocument({
     players: createPlayers(settings.roster.playerCount, fieldLayout),
     paths: [],
     handoffs: [],
+    textAnnotations: [],
     displaySettings: normalizePlayDisplaySettings(),
     updatedAt: new Date().toISOString(),
     schemaVersion: CURRENT_PLAY_SCHEMA_VERSION,
@@ -409,6 +422,10 @@ export function clonePlayDocument(play: PlayDocument, options: ClonePlayOptions)
       fromPlayerId: playerIdMap.get(handoff.fromPlayerId) ?? handoff.fromPlayerId,
       toPlayerId: playerIdMap.get(handoff.toPlayerId) ?? handoff.toPlayerId,
     })),
+    textAnnotations: cloneTextAnnotations(play.textAnnotations).map((textAnnotation) => ({
+      ...textAnnotation,
+      id: makeId("text"),
+    })),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -430,10 +447,11 @@ export function remapPlayToFieldLayout(play: PlayDocument, nextLayout: FieldLayo
     })),
     paths: play.paths.map((path) => ({
       ...path,
-      points: path.points.map((point) => ({
-        x: scaleValue(point.x, currentLayout.width, nextLayout.width),
-        y: scaleValue(point.y, currentLayout.height, nextLayout.height),
-      })),
+      points: path.points.map((point) => scalePoint(point, currentLayout, nextLayout)),
+    })),
+    textAnnotations: cloneTextAnnotations(play.textAnnotations).map((textAnnotation) => ({
+      ...textAnnotation,
+      ...scalePoint(textAnnotation, currentLayout, nextLayout),
     })),
   });
 }
@@ -468,6 +486,10 @@ export function remapFormation(play: PlayDocument, playerCount: PlayerCount, lay
     players: createPlayers(playerCount, layout),
     paths: [],
     handoffs: [],
+    textAnnotations: cloneTextAnnotations(play.textAnnotations).map((textAnnotation) => ({
+      ...textAnnotation,
+      ...scalePoint(textAnnotation, play.fieldLayout, layout),
+    })),
   });
 }
 
@@ -487,6 +509,7 @@ export function normalizeStoredPlayPayload(input?: StoredPlayPayload | null): St
     players: input?.players ?? [],
     paths: input?.paths ?? [],
     handoffs: input?.handoffs ?? [],
+    textAnnotations: input?.textAnnotations ?? [],
     displaySettings: normalizePlayDisplaySettings(input?.displaySettings),
     schemaVersion: input?.schemaVersion ?? CURRENT_PLAY_SCHEMA_VERSION,
   };
@@ -498,6 +521,7 @@ export function toStoredPlayPayload(play: PlayDocument): StoredPlayPayload {
     players: play.players,
     paths: play.paths,
     handoffs: play.handoffs,
+    textAnnotations: play.textAnnotations,
     displaySettings: play.displaySettings,
     schemaVersion: play.schemaVersion,
   };

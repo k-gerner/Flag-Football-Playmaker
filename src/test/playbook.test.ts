@@ -10,6 +10,7 @@ import {
   isLandscapeCard,
   normalizePlayDisplaySettings,
   normalizePlaySetSettings,
+  normalizeStoredPlayPayload,
   remapPlayToFieldLayout,
   renumberPlays,
 } from "../lib/playbook";
@@ -138,6 +139,7 @@ describe("playbook helpers", () => {
     expect(play.players).toHaveLength(playSet.settings.roster.playerCount);
     expect(play.displaySettings).toEqual(normalizePlayDisplaySettings());
     expect(play.fieldLayout).toEqual(getEditorFieldLayout(playSet.settings));
+    expect(play.textAnnotations).toEqual([]);
   });
 
   it("preserves an explicitly hidden yard-line setting", () => {
@@ -188,6 +190,14 @@ describe("playbook helpers", () => {
           toPlayerId: rb.id,
         },
       ],
+      textAnnotations: [
+        {
+          id: "text-1",
+          x: 50,
+          y: 45,
+          text: "Alert",
+        },
+      ],
     };
 
     const cloned = clonePlayDocument(playWithLinks, {
@@ -201,6 +211,8 @@ describe("playbook helpers", () => {
     expect(cloned.paths[0].playerId).toBe(clonedQb?.id);
     expect(cloned.handoffs[0].fromPlayerId).toBe(clonedQb?.id);
     expect(cloned.handoffs[0].toPlayerId).toBe(clonedRb?.id);
+    expect(cloned.textAnnotations[0].id).not.toBe(playWithLinks.textAnnotations[0].id);
+    expect(cloned.textAnnotations[0].text).toBe("Alert");
   });
 
   it("remaps a play when the Play Set player count changes", () => {
@@ -262,5 +274,16 @@ describe("playbook helpers", () => {
     expect(qb?.x).toBe(60);
     expect(qb?.y).toBe(105);
     expect(remapped.paths[0].points[0]).toEqual({ x: 60, y: 60 });
+  });
+
+  it("normalizes legacy payloads without text annotations", () => {
+    const payload = normalizeStoredPlayPayload({
+      players: [],
+      paths: [],
+      handoffs: [],
+    });
+
+    expect(payload.textAnnotations).toEqual([]);
+    expect(payload.schemaVersion).toBe(2);
   });
 });

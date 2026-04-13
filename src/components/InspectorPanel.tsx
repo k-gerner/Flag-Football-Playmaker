@@ -1,5 +1,13 @@
+import { useEffect, useRef } from "react";
 import { YARD_MARKER_OPTIONS } from "../lib/playbook";
-import type { PlayDisplaySettings, PlayDocument, PlaySet, PlayerToken, RoutePath } from "../lib/types";
+import type {
+  PlayDisplaySettings,
+  PlayDocument,
+  PlaySet,
+  PlayerToken,
+  RoutePath,
+  TextAnnotation,
+} from "../lib/types";
 
 interface InspectorPanelProps {
   playSet: PlaySet | null;
@@ -8,7 +16,9 @@ interface InspectorPanelProps {
   copyTargetPlaySetId: string;
   selectedPlayer: PlayerToken | null;
   selectedPath: RoutePath | null;
+  selectedText: TextAnnotation | null;
   isDraftingPath: boolean;
+  selectedTextFocusToken: number;
   onSavePlaySettings: () => void;
   onPlayNameChange: (name: string) => void;
   onPlayNotesChange: (notes: string) => void;
@@ -17,6 +27,10 @@ interface InspectorPanelProps {
   onCopyPlayToSet: () => void;
   onPlayerUpdate: (playerId: string, changes: Partial<Pick<PlayerToken, "label" | "color">>) => void;
   onDeleteSelectedPath: () => void;
+  onTextAnnotationChange: (textId: string, text: string) => void;
+  onDeleteSelectedText: () => void;
+  onTextEditStart: (textId: string) => void;
+  onTextEditEnd: (textId: string) => void;
   playSettingsDirty: boolean;
 }
 
@@ -27,7 +41,9 @@ export function InspectorPanel({
   copyTargetPlaySetId,
   selectedPlayer,
   selectedPath,
+  selectedText,
   isDraftingPath,
+  selectedTextFocusToken,
   onSavePlaySettings,
   onPlayNameChange,
   onPlayNotesChange,
@@ -36,8 +52,23 @@ export function InspectorPanel({
   onCopyPlayToSet,
   onPlayerUpdate,
   onDeleteSelectedPath,
+  onTextAnnotationChange,
+  onDeleteSelectedText,
+  onTextEditStart,
+  onTextEditEnd,
   playSettingsDirty,
 }: InspectorPanelProps) {
+  const selectedTextInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!selectedText || !selectedTextInputRef.current) {
+      return;
+    }
+
+    selectedTextInputRef.current.focus();
+    selectedTextInputRef.current.select();
+  }, [selectedText?.id, selectedTextFocusToken]);
+
   if (!playSet) {
     return (
       <aside className="glass-panel flex h-full flex-col gap-4 rounded-[28px] border border-white/70 p-4 shadow-panel">
@@ -193,6 +224,8 @@ export function InspectorPanel({
                   ? `Player ${selectedPlayer.label}`
                   : selectedPath
                     ? `${selectedPath.kind} path`
+                    : selectedText
+                      ? "Text note"
                     : "Nothing selected"}
             </p>
           </div>
@@ -203,6 +236,14 @@ export function InspectorPanel({
               type="button"
             >
               Delete path
+            </button>
+          ) : selectedText ? (
+            <button
+              className="rounded-full border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+              onClick={onDeleteSelectedText}
+              type="button"
+            >
+              Delete note
             </button>
           ) : null}
         </div>
@@ -227,6 +268,20 @@ export function InspectorPanel({
                 onChange={(event) => onPlayerUpdate(selectedPlayer.id, { color: event.target.value })}
                 type="color"
                 value={selectedPlayer.color}
+              />
+            </label>
+          </div>
+        ) : selectedText ? (
+          <div className="mt-3 grid gap-3">
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-ink-950/70">Board text</span>
+              <input
+                className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                onBlur={() => onTextEditEnd(selectedText.id)}
+                onChange={(event) => onTextAnnotationChange(selectedText.id, event.target.value)}
+                onFocus={() => onTextEditStart(selectedText.id)}
+                ref={selectedTextInputRef}
+                value={selectedText.text}
               />
             </label>
           </div>
