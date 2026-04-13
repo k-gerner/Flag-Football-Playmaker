@@ -7,7 +7,7 @@ import { Playboard } from "./components/Playboard";
 import { PlaySetSettingsModal } from "./components/PlaySetSettingsModal";
 import { Toolbar } from "./components/Toolbar";
 import { createMemoryBackend, supabaseBackend, type AppBackend } from "./lib/backend";
-import { exportPlaySetToPdf, exportPlayToPdf } from "./lib/pdf";
+import { exportPlaySetToPdf } from "./lib/pdf";
 import { makeId } from "./lib/id";
 import {
   applyPlaySetSettingsToPlay,
@@ -35,6 +35,8 @@ import type {
 interface AppShellProps {
   backend: AppBackend;
 }
+
+type PlayInspectorDraft = Pick<PlayDocument, "name" | "notes" | "displaySettings">;
 
 function SetupPanel() {
   return (
@@ -64,6 +66,32 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
+function mergeInspectorDraft(play: PlayDocument, draft?: PlayInspectorDraft | null): PlayDocument {
+  if (!draft) {
+    return play;
+  }
+
+  return {
+    ...play,
+    name: draft.name,
+    notes: draft.notes,
+    displaySettings: normalizePlayDisplaySettings(draft.displaySettings),
+  };
+}
+
+function hasInspectorDraftChanges(play: PlayDocument, draft: PlayInspectorDraft) {
+  const normalizedDisplaySettings = normalizePlayDisplaySettings(draft.displaySettings);
+
+  return (
+    play.name !== draft.name ||
+    play.notes !== draft.notes ||
+    play.displaySettings.annotations.showLineOfScrimmageLabel !==
+      normalizedDisplaySettings.annotations.showLineOfScrimmageLabel ||
+    play.displaySettings.yardMarkers.length !== normalizedDisplaySettings.yardMarkers.length ||
+    play.displaySettings.yardMarkers.some((value, index) => normalizedDisplaySettings.yardMarkers[index] !== value)
+  );
+}
+
 export function AppShell({ backend }: AppShellProps) {
   const [authState, setAuthState] = useState<AuthSessionState>({
     status: "loading",
@@ -76,6 +104,7 @@ export function AppShell({ backend }: AppShellProps) {
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [playSets, setPlaySets] = useState<PlaySet[]>([]);
   const [playsBySetId, setPlaysBySetId] = useState<Record<string, PlayDocument[]>>({});
+  const [playInspectorDrafts, setPlayInspectorDrafts] = useState<Record<string, PlayInspectorDraft>>({});
   const [activePlaySetId, setActivePlaySetId] = useState<string | null>(null);
   const [activePlayId, setActivePlayId] = useState<string | null>(null);
   const [copyTargetPlaySetId, setCopyTargetPlaySetId] = useState("");
@@ -93,7 +122,11 @@ export function AppShell({ backend }: AppShellProps) {
 
   const activePlaySet = playSets.find((playSet) => playSet.id === activePlaySetId) ?? null;
   const activeSetPlays = activePlaySetId ? playsBySetId[activePlaySetId] ?? [] : [];
-  const activePlay = activeSetPlays.find((play) => play.id === activePlayId) ?? activeSetPlays[0] ?? null;
+  const displayedSetPlays = activeSetPlays.map((play) => mergeInspectorDraft(play, playInspectorDrafts[play.id]));
+  const persistedActivePlay = activeSetPlays.find((play) => play.id === activePlayId) ?? activeSetPlays[0] ?? null;
+  const activePlay = persistedActivePlay
+    ? mergeInspectorDraft(persistedActivePlay, playInspectorDrafts[persistedActivePlay.id])
+    : null;
   const selectedPlayer = activePlay?.players.find((player) => player.id === selectedPlayerId) ?? null;
   const selectedPath = activePlay?.paths.find((path) => path.id === selectedPathId) ?? null;
   const hasPlaySets = playSets.length > 0;
@@ -127,6 +160,7 @@ export function AppShell({ backend }: AppShellProps) {
 
       setPlaySets(nextPlaySets);
       setPlaysBySetId(nextPlaysBySetId);
+      setPlayInspectorDrafts({});
       setActivePlaySetId((current) =>
         current && nextPlaySets.some((playSet) => playSet.id === current) ? current : nextPlaySets[0]?.id ?? null,
       );
@@ -233,6 +267,7 @@ export function AppShell({ backend }: AppShellProps) {
       clearSaveTimers();
       setPlaySets([]);
       setPlaysBySetId({});
+      setPlayInspectorDrafts({});
       setActivePlaySetId(null);
       setActivePlayId(null);
       clearTransientState();
@@ -269,6 +304,11 @@ export function AppShell({ backend }: AppShellProps) {
     }
   }, [activePlaySet]);
 
+  useEffect(() => {
+    const validPlayIds = new Set(Object.values(playsBySetId).flat().map((play) => play.id));
+    setPlayInspectorDrafts((current) => Object.fromEntries(Object.entries(current).filter(([playId]) => validPlayIds.has(playId))));
+  }, [playsBySetId]);
+
   const setScopedPlaySets = useMemo(() => playSets, [playSets]);
 
   async function handleAuthSubmit(mode: "sign_in" | "sign_up", email: string, password: string) {
@@ -288,13 +328,13 @@ export function AppShell({ backend }: AppShellProps) {
   }
 
   function updateActivePlay(updater: (play: PlayDocument) => PlayDocument) {
-    if (!activePlay || !activePlaySetId) {
+    if (!persistedActivePlay || !activePlaySetId) {
       return;
     }
 
     setPlaysBySetId((current) => {
       const nextPlays = (current[activePlaySetId] ?? []).map((play) => {
-        if (play.id !== activePlay.id) {
+        if (play.id !== persistedActivePlay.id) {
           return play;
         }
 
@@ -308,6 +348,66 @@ export function AppShell({ backend }: AppShellProps) {
         [activePlaySetId]: nextPlays,
       };
     });
+  }
+
+  function updateActivePlayInspectorDraft(updater: (play: PlayDocument) => PlayDocument) {
+    if (!persistedActivePlay) {
+      return;
+    }
+
+    setPlayInspectorDrafts((current) => {
+      const nextPlay = updater(mergeInspectorDraft(persistedActivePlay, current[persistedActivePlay.id]));
+      const nextDraft: PlayInspectorDraft = {
+        name: nextPlay.name,
+        notes: nextPlay.notes,
+        displaySettings: normalizePlayDisplaySettings(nextPlay.displaySettings),
+      };
+
+      if (!hasInspectorDraftChanges(persistedActivePlay, nextDraft)) {
+        const { [persistedActivePlay.id]: _removed, ...rest } = current;
+        return rest;
+      }
+
+      return {
+        ...current,
+        [persistedActivePlay.id]: nextDraft,
+      };
+    });
+  }
+
+  async function handleSaveActivePlaySettings() {
+    if (!persistedActivePlay) {
+      return;
+    }
+
+    const draft = playInspectorDrafts[persistedActivePlay.id];
+    if (!draft) {
+      return;
+    }
+
+    const existingTimer = playSaveTimers.current[persistedActivePlay.id];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+      delete playSaveTimers.current[persistedActivePlay.id];
+    }
+
+    const nextPlay = touchPlay(mergeInspectorDraft(persistedActivePlay, draft));
+
+    try {
+      const saved = await backend.savePlay(nextPlay);
+      setPlaysBySetId((current) => ({
+        ...current,
+        [saved.playSetId]: (current[saved.playSetId] ?? [])
+          .map((play) => (play.id === saved.id ? saved : play))
+          .sort((a, b) => a.playNumber - b.playNumber),
+      }));
+      setPlayInspectorDrafts((current) => {
+        const { [saved.id]: _removed, ...rest } = current;
+        return rest;
+      });
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    }
   }
 
   async function handleCreatePlaySet(input?: { name: string; settings: Partial<PlaySet["settings"]> }) {
@@ -373,6 +473,7 @@ export function AppShell({ backend }: AppShellProps) {
 
   async function handleDeletePlaySet(playSetId: string) {
     try {
+      const deletedPlayIds = new Set((playsBySetId[playSetId] ?? []).map((play) => play.id));
       await backend.deletePlaySet(playSetId);
       setPlaySets((current) => current.filter((playSet) => playSet.id !== playSetId));
       setPlaysBySetId((current) => {
@@ -380,6 +481,9 @@ export function AppShell({ backend }: AppShellProps) {
         delete next[playSetId];
         return next;
       });
+      setPlayInspectorDrafts((current) =>
+        Object.fromEntries(Object.entries(current).filter(([playId]) => !deletedPlayIds.has(playId))),
+      );
       if (activePlaySetId === playSetId) {
         const fallback = playSets.find((playSet) => playSet.id !== playSetId) ?? null;
         setActivePlaySetId(fallback?.id ?? null);
@@ -426,7 +530,7 @@ export function AppShell({ backend }: AppShellProps) {
       return;
     }
 
-    const sourcePlay = activeSetPlays.find((play) => play.id === playId);
+    const sourcePlay = displayedSetPlays.find((play) => play.id === playId);
     if (!sourcePlay) {
       return;
     }
@@ -463,6 +567,10 @@ export function AppShell({ backend }: AppShellProps) {
     try {
       await backend.deletePlay(playId);
       await persistPlaysImmediately(remaining);
+      setPlayInspectorDrafts((current) => {
+        const { [playId]: _removed, ...rest } = current;
+        return rest;
+      });
       if (activePlayId === playId) {
         setActivePlayId(remaining[0]?.id ?? null);
         clearTransientState();
@@ -674,19 +782,6 @@ export function AppShell({ backend }: AppShellProps) {
     await exportPlaySetToPdf(activePlaySet, activeSetPlays, exportSvgRefs.current);
   }
 
-  async function handleExportPlay() {
-    if (!activePlaySet || !activePlay) {
-      return;
-    }
-
-    const svg = exportSvgRefs.current[activePlay.id];
-    if (!svg) {
-      return;
-    }
-
-    await exportPlayToPdf(activePlaySet, activePlay, svg);
-  }
-
   if (authState.status === "loading" || workspaceBusy) {
     return (
       <div className="flex min-h-screen items-center justify-center px-5 py-8 lg:px-8">
@@ -753,7 +848,7 @@ export function AppShell({ backend }: AppShellProps) {
               }}
               onSelectPlaySet={handleSelectPlaySet}
               playSets={setScopedPlaySets}
-              plays={activeSetPlays}
+              plays={displayedSetPlays}
             />
           </div>
 
@@ -875,16 +970,17 @@ export function AppShell({ backend }: AppShellProps) {
               onCopyPlayToSet={handleCopyPlayToSet}
               onCopyTargetPlaySetChange={setCopyTargetPlaySetId}
               onDeleteSelectedPath={handleDeleteSelectedPath}
-              onExportPlay={handleExportPlay}
+              onSavePlaySettings={() => void handleSaveActivePlaySettings()}
               onPlayDisplaySettingsChange={(displaySettings) => {
-                updateActivePlay((play) => ({
+                updateActivePlayInspectorDraft((play) => ({
                   ...play,
                   displaySettings: normalizePlayDisplaySettings(displaySettings),
                 }));
               }}
-              onPlayNameChange={(name) => updateActivePlay((play) => ({ ...play, name }))}
-              onPlayNotesChange={(notes) => updateActivePlay((play) => ({ ...play, notes }))}
+              onPlayNameChange={(name) => updateActivePlayInspectorDraft((play) => ({ ...play, name }))}
+              onPlayNotesChange={(notes) => updateActivePlayInspectorDraft((play) => ({ ...play, notes }))}
               onPlayerUpdate={handlePlayerUpdate}
+              playSettingsDirty={Boolean(persistedActivePlay && playInspectorDrafts[persistedActivePlay.id])}
               play={activePlay}
               playSet={activePlaySet}
               playSets={playSets}
@@ -952,7 +1048,7 @@ export function AppShell({ backend }: AppShellProps) {
 
       {activePlaySet ? (
         <div className="absolute -left-[99999px] top-0 h-0 w-0 overflow-hidden" aria-hidden="true">
-          {activeSetPlays.map((play) => (
+          {displayedSetPlays.map((play) => (
             <Playboard
               accessibleLabel={null}
               draftPath={null}

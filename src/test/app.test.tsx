@@ -260,16 +260,31 @@ describe("AppShell", () => {
   });
 
   it("toggles yard-line visibility from the inspector", async () => {
-    render(<AppShell backend={createSeededMemoryBackend()} />);
+    const backend = createSeededMemoryBackend();
+    const savePlaySpy = vi.spyOn(backend, "savePlay");
+
+    render(<AppShell backend={backend} />);
 
     const board = await screen.findByTestId("playboard");
     const getBoardText = () => Array.from(board.querySelectorAll("text")).map((node) => node.textContent);
 
+    savePlaySpy.mockClear();
     expect(getBoardText()).toContain("15");
 
     fireEvent.click(screen.getByRole("switch", { name: "Toggle yard lines" }));
     await waitFor(() => {
       expect(getBoardText()).not.toContain("15");
+    });
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 600));
+    });
+    expect(savePlaySpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(savePlaySpy).toHaveBeenCalledTimes(1);
     });
 
     fireEvent.click(screen.getByRole("switch", { name: "Toggle yard lines" }));

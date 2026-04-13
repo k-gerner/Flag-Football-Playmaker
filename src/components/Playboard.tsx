@@ -190,29 +190,33 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
           y="0"
         />
 
+        <g>
+          <line
+            opacity={0.95}
+            stroke={theme.accent}
+            strokeWidth={1.2}
+            x1="10"
+            x2={layout.width - 5}
+            y1={layout.lineOfScrimmageY}
+            y2={layout.lineOfScrimmageY}
+          />
+        </g>
+
         {play.displaySettings.yardMarkers.map((yards) => {
           const y = layout.lineOfScrimmageY - (yards / 15) * layout.yardsInFront;
-          const isScrimmage = yards === 0;
           return (
             <g key={yards}>
               <line
-                opacity={isScrimmage ? 0.95 : 0.3}
-                stroke={isScrimmage ? theme.accent : theme.grid}
-                strokeDasharray={isScrimmage ? undefined : "1.4 3"}
-                strokeWidth={isScrimmage ? 1.2 : 0.35}
+                opacity={0.3}
+                stroke={theme.grid}
+                strokeDasharray="1.4 3"
+                strokeWidth={0.35}
                 x1="10"
                 x2={layout.width - 5}
                 y1={y}
                 y2={y}
               />
-              <text
-                fill={isScrimmage ? theme.scrimmage : theme.gridText}
-                fontSize="3"
-                fontWeight={isScrimmage ? "700" : "600"}
-                textAnchor="end"
-                x="8"
-                y={y + 1}
-              >
+              <text fill={theme.gridText} fontSize="3" fontWeight="600" textAnchor="end" x="8" y={y + 1}>
                 {yards}
               </text>
             </g>

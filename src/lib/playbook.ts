@@ -52,7 +52,7 @@ export const PLAYER_COLORS = [
   "#f5d0fe",
 ];
 
-export const YARD_MARKER_OPTIONS = [0, 5, 10, 15];
+export const YARD_MARKER_OPTIONS = [5, 10, 15];
 const CENTIMETERS_PER_INCH = 2.54;
 
 export const PRINT_PRESETS: Array<{

@@ -9,7 +9,7 @@ interface InspectorPanelProps {
   selectedPlayer: PlayerToken | null;
   selectedPath: RoutePath | null;
   isDraftingPath: boolean;
-  onExportPlay: () => void;
+  onSavePlaySettings: () => void;
   onPlayNameChange: (name: string) => void;
   onPlayNotesChange: (notes: string) => void;
   onPlayDisplaySettingsChange: (displaySettings: PlayDisplaySettings) => void;
@@ -17,6 +17,7 @@ interface InspectorPanelProps {
   onCopyPlayToSet: () => void;
   onPlayerUpdate: (playerId: string, changes: Partial<Pick<PlayerToken, "label" | "color">>) => void;
   onDeleteSelectedPath: () => void;
+  playSettingsDirty: boolean;
 }
 
 export function InspectorPanel({
@@ -27,7 +28,7 @@ export function InspectorPanel({
   selectedPlayer,
   selectedPath,
   isDraftingPath,
-  onExportPlay,
+  onSavePlaySettings,
   onPlayNameChange,
   onPlayNotesChange,
   onPlayDisplaySettingsChange,
@@ -35,6 +36,7 @@ export function InspectorPanel({
   onCopyPlayToSet,
   onPlayerUpdate,
   onDeleteSelectedPath,
+  playSettingsDirty,
 }: InspectorPanelProps) {
   if (!playSet) {
     return (
@@ -60,13 +62,16 @@ export function InspectorPanel({
               <p className="font-display text-base font-bold text-ink-950">Active Play</p>
               <p className="text-sm text-ink-950/60">Play #{play.playNumber} inside {playSet.name}.</p>
             </div>
-            <button
-              className="rounded-full border border-ink-950/15 px-4 py-2 text-sm font-semibold text-ink-950 transition hover:border-ink-950/35"
-              onClick={onExportPlay}
-              type="button"
-            >
-              Export Play
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="rounded-full bg-ember-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-ember-500/90 disabled:cursor-not-allowed disabled:bg-ember-500/45"
+                disabled={!playSettingsDirty}
+                onClick={onSavePlaySettings}
+                type="button"
+              >
+                Save
+              </button>
+            </div>
           </div>
 
           <div className="mt-3 space-y-3">

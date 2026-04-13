@@ -67,21 +67,6 @@ async function drawPlayCard(
   });
 }
 
-export async function exportPlayToPdf(
-  playSet: PlaySet,
-  play: PlayDocument,
-  svg: SVGSVGElement,
-) {
-  const pageHeight = playSet.settings.print.height;
-  const doc = createDoc(playSet, pageHeight);
-  const { cardWidth, cardHeight } = getPlaySetPrintLayoutMetrics(playSet.settings);
-  const x = Math.max(0, (playSet.settings.print.width - cardWidth) / 2);
-  const y = Math.max(0, (pageHeight - cardHeight) / 2);
-
-  await drawPlayCard(doc, playSet, play, svg, x, y);
-  doc.save(`${play.name.replace(/\s+/g, "-").toLowerCase() || "play"}.pdf`);
-}
-
 export async function exportPlaySetToPdf(
   playSet: PlaySet,
   plays: PlayDocument[],
