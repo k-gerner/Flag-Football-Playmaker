@@ -48,6 +48,8 @@ export function InspectorPanel({
   }
 
   const copyTargets = playSets.filter((item) => item.id !== playSet.id);
+  const showYardLines = (play?.displaySettings.yardMarkers.length ?? 0) > 0;
+  const showLineOfScrimmageLabel = play?.displaySettings.annotations.showLineOfScrimmageLabel ?? false;
 
   return (
     <aside className="glass-panel flex h-full flex-col gap-4 rounded-[28px] border border-white/70 p-4 shadow-panel">
@@ -87,52 +89,62 @@ export function InspectorPanel({
               />
             </label>
 
-            <div>
-              <p className="mb-2 text-sm font-semibold text-ink-950/70">Visible yard markers</p>
-              <div className="flex flex-wrap gap-2">
-                {YARD_MARKER_OPTIONS.map((marker) => {
-                  const active = play.displaySettings.yardMarkers.includes(marker);
-                  return (
-                    <button
-                      className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
-                        active
-                          ? "border-ember-500 bg-ember-300/20 text-ink-950"
-                          : "border-ink-950/10 bg-white/80 text-ink-950/70"
-                      }`}
-                      key={marker}
-                      onClick={() =>
-                        onPlayDisplaySettingsChange({
-                          ...play.displaySettings,
-                          yardMarkers: active
-                            ? play.displaySettings.yardMarkers.filter((value) => value !== marker)
-                            : [...play.displaySettings.yardMarkers, marker].sort((a, b) => a - b),
-                        })
-                      }
-                      type="button"
-                    >
-                      {marker}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="inline-flex items-center gap-3 rounded-full border border-black/10 bg-white/75 px-3 py-2 shadow-sm">
+              <span className="text-sm font-semibold text-ink-950/75">Show yard lines</span>
+              <button
+                aria-checked={showYardLines}
+                aria-label="Toggle yard lines"
+                className={`relative inline-flex h-6 w-11 items-center rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-ember-500/40 ${
+                  showYardLines ? "bg-ember-500" : "bg-ink-950/15"
+                }`}
+                onClick={() =>
+                  onPlayDisplaySettingsChange({
+                    ...play.displaySettings,
+                    yardMarkers: showYardLines ? [] : [...YARD_MARKER_OPTIONS],
+                  })
+                }
+                role="switch"
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`inline-block h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,32,0.18)] transition-transform ${
+                    showYardLines ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
             </div>
 
-            <label className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white/70 px-3 py-2">
-              <input
-                checked={play.displaySettings.annotations.showLineOfScrimmageLabel}
-                onChange={(event) =>
+            <div className="inline-flex items-center gap-3 rounded-full border border-black/10 bg-white/75 px-3 py-2 shadow-sm">
+              <span className="text-sm font-semibold text-ink-950/75">Show line of scrimmage label</span>
+              <button
+                aria-checked={showLineOfScrimmageLabel}
+                aria-label="Toggle line of scrimmage label"
+                className={`relative inline-flex h-6 w-11 items-center rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-ember-500/40 ${
+                  showLineOfScrimmageLabel
+                    ? "bg-ember-500"
+                    : "bg-ink-950/15"
+                }`}
+                onClick={() =>
                   onPlayDisplaySettingsChange({
                     ...play.displaySettings,
                     annotations: {
                       ...play.displaySettings.annotations,
-                      showLineOfScrimmageLabel: event.target.checked,
+                      showLineOfScrimmageLabel: !showLineOfScrimmageLabel,
                     },
                   })
                 }
-                type="checkbox"
-              />
-              <span className="text-sm font-semibold text-ink-950/75">Show line of scrimmage label</span>
-            </label>
+                role="switch"
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`inline-block h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,32,0.18)] transition-transform ${
+                    showLineOfScrimmageLabel ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
 
             {copyTargets.length > 0 ? (
               <div className="rounded-2xl border border-black/10 bg-white/70 p-3">

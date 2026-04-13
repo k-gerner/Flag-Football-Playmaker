@@ -317,12 +317,14 @@ export function normalizePlaySetSettings(input?: Partial<PlaySetSettings> | null
 export function normalizePlayDisplaySettings(
   input?: Partial<PlayDisplaySettings> | null,
 ): PlayDisplaySettings {
-  const markers = (input?.yardMarkers ?? DEFAULT_PLAY_DISPLAY_SETTINGS.yardMarkers)
+  const hasStoredYardMarkers = Array.isArray(input?.yardMarkers);
+  const selectedMarkers = hasStoredYardMarkers ? (input?.yardMarkers ?? []) : DEFAULT_PLAY_DISPLAY_SETTINGS.yardMarkers;
+  const markers = selectedMarkers
     .filter((value) => YARD_MARKER_OPTIONS.includes(value))
     .sort((a, b) => a - b);
 
   return {
-    yardMarkers: markers.length > 0 ? markers : [...DEFAULT_PLAY_DISPLAY_SETTINGS.yardMarkers],
+    yardMarkers: hasStoredYardMarkers ? markers : [...DEFAULT_PLAY_DISPLAY_SETTINGS.yardMarkers],
     annotations: {
       ...DEFAULT_PLAY_DISPLAY_SETTINGS.annotations,
       ...(input?.annotations ?? {}),

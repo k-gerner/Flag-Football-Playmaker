@@ -259,6 +259,25 @@ describe("AppShell", () => {
     });
   });
 
+  it("toggles yard-line visibility from the inspector", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+
+    const board = await screen.findByTestId("playboard");
+    const getBoardText = () => Array.from(board.querySelectorAll("text")).map((node) => node.textContent);
+
+    expect(getBoardText()).toContain("15");
+
+    fireEvent.click(screen.getByRole("switch", { name: "Toggle yard lines" }));
+    await waitFor(() => {
+      expect(getBoardText()).not.toContain("15");
+    });
+
+    fireEvent.click(screen.getByRole("switch", { name: "Toggle yard lines" }));
+    await waitFor(() => {
+      expect(getBoardText()).toContain("15");
+    });
+  });
+
   it("creates a play set from the setup modal with roster and page layout details", async () => {
     render(<AppShell backend={createMemoryBackend({ initialPlaySets: [], initialPlays: [] })} />);
 

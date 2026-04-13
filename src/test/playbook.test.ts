@@ -140,6 +140,15 @@ describe("playbook helpers", () => {
     expect(play.fieldLayout).toEqual(getEditorFieldLayout(playSet.settings));
   });
 
+  it("preserves an explicitly hidden yard-line setting", () => {
+    const settings = normalizePlayDisplaySettings({
+      yardMarkers: [],
+    });
+
+    expect(settings.yardMarkers).toEqual([]);
+    expect(settings.annotations.showLineOfScrimmageLabel).toBe(true);
+  });
+
   it("renumbers plays densely after reordering", () => {
     const playSet = createPlaySet("Team A");
     const first = createPlayDocument({ playSetId: playSet.id, playNumber: 1, settings: playSet.settings });
