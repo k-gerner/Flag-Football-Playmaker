@@ -52,12 +52,19 @@ export interface PrintSettings {
   unit: Unit;
 }
 
+export interface PlaySetRosterPlayer {
+  label: string;
+  color: string;
+}
+
 export interface PlaySetSettings {
   roster: {
     playerCount: PlayerCount;
+    players: PlaySetRosterPlayer[];
   };
   field: {
     backgroundColor: string;
+    matchRouteColorToPlayer: boolean;
   };
   print: PrintSettings;
   layout: {
@@ -70,6 +77,14 @@ export interface PlaySetSettings {
     includePlayNumber: boolean;
     includePlayName: boolean;
   };
+}
+
+export interface PartialPlaySetSettings {
+  roster?: Partial<PlaySetSettings["roster"]>;
+  field?: Partial<PlaySetSettings["field"]>;
+  print?: Partial<PlaySetSettings["print"]>;
+  layout?: Partial<PlaySetSettings["layout"]>;
+  export?: Partial<PlaySetSettings["export"]>;
 }
 
 export interface PlayDisplaySettings {

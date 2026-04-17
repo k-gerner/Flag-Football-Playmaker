@@ -25,6 +25,7 @@ import type {
   AuthSessionState,
   DraftPath,
   HandoffMark,
+  PartialPlaySetSettings,
   PlayDocument,
   PlaySet,
   PlayerToken,
@@ -139,6 +140,32 @@ function isEditableShortcutTarget(target: EventTarget | null) {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
+function movePlayerAndAttachedPaths(play: PlayDocument, playerId: string, point: Point): PlayDocument {
+  const player = play.players.find((item) => item.id === playerId);
+  if (!player) {
+    return play;
+  }
+
+  const deltaX = point.x - player.x;
+  const deltaY = point.y - player.y;
+
+  return {
+    ...play,
+    players: play.players.map((item) => (item.id === playerId ? { ...item, ...point } : item)),
+    paths: play.paths.map((path) =>
+      path.playerId === playerId
+        ? {
+            ...path,
+            points: path.points.map((pathPoint) => ({
+              x: Number((pathPoint.x + deltaX).toFixed(3)),
+              y: Number((pathPoint.y + deltaY).toFixed(3)),
+            })),
+          }
+        : path,
+    ),
+  };
+}
+
 export function AppShell({ backend }: AppShellProps) {
   const [authState, setAuthState] = useState<AuthSessionState>({
     status: "loading",
@@ -152,6 +179,7 @@ export function AppShell({ backend }: AppShellProps) {
   const [playSets, setPlaySets] = useState<PlaySet[]>([]);
   const [playsBySetId, setPlaysBySetId] = useState<Record<string, PlayDocument[]>>({});
   const [playInspectorDrafts, setPlayInspectorDrafts] = useState<Record<string, PlayInspectorDraft>>({});
+  const [pendingPlaySaveIds, setPendingPlaySaveIds] = useState<Record<string, boolean>>({});
   const [activePlaySetId, setActivePlaySetId] = useState<string | null>(null);
   const [activePlayId, setActivePlayId] = useState<string | null>(null);
   const [copyTargetPlaySetId, setCopyTargetPlaySetId] = useState("");
@@ -188,6 +216,9 @@ export function AppShell({ backend }: AppShellProps) {
   const activeBoardHistory = persistedActivePlay ? boardHistoryRef.current[persistedActivePlay.id] : null;
   const canUndo = (activeBoardHistory?.past.length ?? 0) > 0;
   const canRedo = (activeBoardHistory?.future.length ?? 0) > 0;
+  const hasPendingActivePlaySave = Boolean(persistedActivePlay && pendingPlaySaveIds[persistedActivePlay.id]);
+  const hasUnsavedActivePlayChanges =
+    Boolean(persistedActivePlay && playInspectorDrafts[persistedActivePlay.id]) || hasPendingActivePlaySave;
 
   const userId = authState.user?.id ?? null;
 
@@ -212,6 +243,23 @@ export function AppShell({ backend }: AppShellProps) {
     Object.values(playSetSaveTimers.current).forEach((timerId) => window.clearTimeout(timerId));
     playSaveTimers.current = {};
     playSetSaveTimers.current = {};
+    setPendingPlaySaveIds({});
+  };
+
+  const markPlaySavePending = (playId: string) => {
+    setPendingPlaySaveIds((current) => (current[playId] ? current : { ...current, [playId]: true }));
+  };
+
+  const markPlaySaveSettled = (playId: string) => {
+    setPendingPlaySaveIds((current) => {
+      if (!current[playId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[playId];
+      return next;
+    });
   };
 
   async function loadWorkspace(nextUserId: string) {
@@ -228,6 +276,7 @@ export function AppShell({ backend }: AppShellProps) {
       setPlaySets(nextPlaySets);
       setPlaysBySetId(nextPlaysBySetId);
       setPlayInspectorDrafts({});
+      setPendingPlaySaveIds({});
       setActivePlaySetId((current) =>
         current && nextPlaySets.some((playSet) => playSet.id === current) ? current : nextPlaySets[0]?.id ?? null,
       );
@@ -243,6 +292,7 @@ export function AppShell({ backend }: AppShellProps) {
       return;
     }
 
+    markPlaySavePending(play.id);
     const existingTimer = playSaveTimers.current[play.id];
     if (existingTimer) {
       window.clearTimeout(existingTimer);
@@ -257,6 +307,7 @@ export function AppShell({ backend }: AppShellProps) {
             .map((item) => (item.id === saved.id ? saved : item))
             .sort((a, b) => a.playNumber - b.playNumber),
         }));
+        markPlaySaveSettled(saved.id);
       } catch (error) {
         setWorkspaceError(getErrorMessage(error));
       }
@@ -303,6 +354,13 @@ export function AppShell({ backend }: AppShellProps) {
           ...current,
           [saved[0].playSetId]: saved,
         }));
+        setPendingPlaySaveIds((current) => {
+          const next = { ...current };
+          saved.forEach((play) => {
+            delete next[play.id];
+          });
+          return next;
+        });
       }
     } catch (error) {
       setWorkspaceError(getErrorMessage(error));
@@ -440,6 +498,7 @@ export function AppShell({ backend }: AppShellProps) {
       setPlaySets([]);
       setPlaysBySetId({});
       setPlayInspectorDrafts({});
+      setPendingPlaySaveIds({});
       boardHistoryRef.current = {};
       setActivePlaySetId(null);
       setActivePlayId(null);
@@ -480,6 +539,7 @@ export function AppShell({ backend }: AppShellProps) {
   useEffect(() => {
     const validPlayIds = new Set(Object.values(playsBySetId).flat().map((play) => play.id));
     setPlayInspectorDrafts((current) => Object.fromEntries(Object.entries(current).filter(([playId]) => validPlayIds.has(playId))));
+    setPendingPlaySaveIds((current) => Object.fromEntries(Object.entries(current).filter(([playId]) => validPlayIds.has(playId))));
   }, [playsBySetId]);
 
   useEffect(() => {
@@ -623,6 +683,7 @@ export function AppShell({ backend }: AppShellProps) {
       delete playSaveTimers.current[persistedActivePlay.id];
     }
 
+    markPlaySavePending(persistedActivePlay.id);
     const nextPlay = touchPlay(mergeInspectorDraft(persistedActivePlay, draft));
 
     try {
@@ -637,12 +698,13 @@ export function AppShell({ backend }: AppShellProps) {
         const { [saved.id]: _removed, ...rest } = current;
         return rest;
       });
+      markPlaySaveSettled(saved.id);
     } catch (error) {
       setWorkspaceError(getErrorMessage(error));
     }
   }
 
-  async function handleCreatePlaySet(input?: { name: string; settings: Partial<PlaySet["settings"]> }) {
+  async function handleCreatePlaySet(input?: { name: string; settings: PartialPlaySetSettings }) {
     if (!userId) {
       return;
     }
@@ -1010,12 +1072,7 @@ export function AppShell({ backend }: AppShellProps) {
   }
 
   function handleMovePlayer(playerId: string, point: Point) {
-    updateActivePlay((play) => ({
-      ...play,
-      players: play.players.map((player) =>
-        player.id === playerId ? { ...player, ...point } : player,
-      ),
-    }));
+    updateActivePlay((play) => movePlayerAndAttachedPaths(play, playerId, point));
   }
 
   function handleStartMovePathPoint() {
@@ -1207,25 +1264,21 @@ export function AppShell({ backend }: AppShellProps) {
             )}
 
             {activePlaySet && activePlay ? (
-              <section className="grid gap-4 rounded-[38px] bg-ink-950/80 p-4 shadow-panel sm:p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3 text-white/80">
-                  <div>
-                    <p className="font-display text-xl font-bold text-white">
-                      {activePlaySet.name}: {activePlay.name}
-                    </p>
-                    <p className="text-sm text-white/70">
-                      {draftPath
-                        ? "Release to commit the path."
-                        : tool === "handoff"
-                          ? handoffSourceId
-                            ? "Choose the receiving player to create the handoff."
-                            : "Choose the ball carrier, then the receiving player."
-                          : tool === "text"
-                            ? "Click anywhere on the board to drop a note."
-                          : "Use select mode to drag players and edit route handles."}
-                    </p>
+              <section className="relative grid gap-4 rounded-[38px] bg-ink-950/80 p-4 shadow-panel sm:p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
+                        hasUnsavedActivePlayChanges
+                          ? "bg-red-500/20 text-red-200 ring-1 ring-inset ring-red-400/35"
+                          : "bg-emerald-500/20 text-emerald-200 ring-1 ring-inset ring-emerald-400/35"
+                      }`}
+                    >
+                      {hasUnsavedActivePlayChanges ? "Unsaved Changes" : "Saved"}
+                    </div>
+                    <p className="mt-2 font-display text-xl font-bold text-white">{activePlay.name}</p>
                   </div>
-                  <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/85">
+                  <div className="shrink-0 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/85">
                     Play #{activePlay.playNumber}
                   </div>
                 </div>
@@ -1263,6 +1316,17 @@ export function AppShell({ backend }: AppShellProps) {
                   selectedTextId={selectedTextId}
                   tool={tool}
                 />
+                <p className="text-sm text-white/70">
+                  {draftPath
+                    ? "Release to commit the path."
+                    : tool === "handoff"
+                      ? handoffSourceId
+                        ? "Choose the receiving player to create the handoff."
+                        : "Choose the ball carrier, then the receiving player."
+                      : tool === "text"
+                        ? "Click anywhere on the board to drop a note."
+                        : "Use select mode to drag players and edit route handles."}
+                </p>
               </section>
             ) : activePlaySet ? (
               <section className="grid gap-4 rounded-[38px] bg-ink-950/80 p-8 text-center text-white/80 shadow-panel">

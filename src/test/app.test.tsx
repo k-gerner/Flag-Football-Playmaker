@@ -3,7 +3,7 @@ import { vi } from "vitest";
 import { AppShell } from "../App";
 import { PlayLibrary } from "../components/PlayLibrary";
 import { createMemoryBackend, createSeededMemoryBackend } from "../lib/backend";
-import { createPlaySet, getEditorFieldLayout, normalizePlaySetSettings } from "../lib/playbook";
+import { createPlayDocument, createPlaySet, getEditorFieldLayout, normalizePlaySetSettings } from "../lib/playbook";
 
 async function mockBoardRect() {
   const board = await screen.findByTestId("playboard");
@@ -190,6 +190,57 @@ describe("AppShell", () => {
     expect(within(rail).getByText("2x3")).toBeInTheDocument();
   });
 
+  it("syncs roster labels and colors from play set settings across the whole set", async () => {
+    const playSet = createPlaySet("Play Set 1");
+    const firstPlay = createPlayDocument({
+      playSetId: playSet.id,
+      playNumber: 1,
+      settings: playSet.settings,
+    });
+    const secondPlay = createPlayDocument({
+      playSetId: playSet.id,
+      playNumber: 2,
+      settings: playSet.settings,
+      name: "Counter",
+    });
+
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [playSet],
+          initialPlays: [firstPlay, secondPlay],
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
+    const firstRosterPlayer = within(modal).getByTestId("play-set-roster-player-0");
+
+    fireEvent.change(within(firstRosterPlayer).getByDisplayValue("X"), {
+      target: { value: "FL" },
+    });
+    fireEvent.change(within(firstRosterPlayer).getByDisplayValue("#f4b16d"), {
+      target: { value: "#123456" },
+    });
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("play-set-settings-modal")).not.toBeInTheDocument();
+    });
+
+    const firstPlayPlayer = await screen.findByTestId("player-FL");
+    expect(firstPlayPlayer.querySelector("circle")).toHaveAttribute("fill", "#123456");
+
+    fireEvent.click(screen.getByRole("button", { name: /Counter/ }));
+    const secondPlayPlayer = await screen.findByTestId("player-FL");
+    expect(secondPlayPlayer.querySelector("circle")).toHaveAttribute("fill", "#123456");
+
+    fireEvent.click(screen.getByRole("button", { name: "New Play" }));
+    const thirdPlayPlayer = await screen.findByTestId("player-FL");
+    expect(thirdPlayPlayer.querySelector("circle")).toHaveAttribute("fill", "#123456");
+  });
+
   it("blocks saving a portrait card layout in play set settings", async () => {
     const playSet = createPlaySet("Play Set 1");
     render(
@@ -301,6 +352,24 @@ describe("AppShell", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Toggle yard lines" }));
     await waitFor(() => {
       expect(getBoardText()).toContain("15");
+    });
+  });
+
+  it("shows saved and unsaved play status in the active play header", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Play name" }), {
+      target: { value: "Trips Right" },
+    });
+
+    expect(screen.getByText("Unsaved Changes")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved")).toBeInTheDocument();
     });
   });
 
@@ -434,7 +503,7 @@ describe("AppShell", () => {
     expect(await screen.findByTestId("playboard")).toBeInTheDocument();
   });
 
-  it("creates a route with a freehand drag and keeps it anchored when the player moves", async () => {
+  it("creates a route with a freehand drag and moves it with the player", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
     await screen.findByTestId("playboard");
     await mockBoardRect();
@@ -442,6 +511,8 @@ describe("AppShell", () => {
     const initialQuarterbackY = Number(((70 / 80) * layout.height).toFixed(3));
     const routeTargetY = Number(((200 / 800) * layout.height).toFixed(3));
     const movedQuarterbackY = Number(Math.min(layout.height - 4, (720 / 800) * layout.height).toFixed(3));
+    const routeDeltaY = Number((movedQuarterbackY - initialQuarterbackY).toFixed(3));
+    const movedRouteTargetY = Number((routeTargetY + routeDeltaY).toFixed(3));
 
     fireEvent.click(screen.getByRole("button", { name: "Route" }));
     drawGesture(screen.getByTestId("player-Q"), [
@@ -463,7 +534,7 @@ describe("AppShell", () => {
     ]);
 
     expect(path.getAttribute("d")).toContain(`M 56 ${movedQuarterbackY}`);
-    expect(path.getAttribute("d")).toContain(`60 ${routeTargetY}`);
+    expect(path.getAttribute("d")).toContain(`56 ${movedRouteTargetY}`);
   });
 
   it("draws motion paths with the same freehand gesture flow", async () => {
@@ -479,6 +550,34 @@ describe("AppShell", () => {
 
     const path = screen.getByTestId(/path-/);
     expect(path).toHaveAttribute("stroke-dasharray", "3 2");
+  });
+
+  it("matches route color to the player color when enabled in play set settings", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+    await mockBoardRect();
+
+    fireEvent.click(screen.getByRole("button", { name: "Route" }));
+    drawGesture(screen.getByTestId("player-Q"), [
+      { clientX: 600, clientY: 700 },
+      { clientX: 620, clientY: 520 },
+      { clientX: 600, clientY: 240 },
+    ]);
+
+    const path = screen.getByTestId(/path-/);
+    const quarterback = screen.getByTestId("player-Q").querySelector("circle");
+
+    expect(path).toHaveAttribute("stroke", "#000000");
+    expect(quarterback).toHaveAttribute("fill", "#65d0b3");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
+    fireEvent.click(within(modal).getByRole("switch", { name: "Toggle match route color to player" }));
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("play-set-settings-modal")).not.toBeInTheDocument();
+    });
+    expect(path).toHaveAttribute("stroke", "#65d0b3");
   });
 
   it("ignores tiny accidental route drags", async () => {

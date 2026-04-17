@@ -1,9 +1,11 @@
 import { makeId } from "./id";
 import type {
   FieldLayout,
+  PartialPlaySetSettings,
   PlayDisplaySettings,
   PlayDocument,
   PlayerCount,
+  PlaySetRosterPlayer,
   PlayerToken,
   Point,
   PrintSettings,
@@ -67,31 +69,6 @@ export const PRINT_PRESETS: Array<{
   { id: "wristband-standard", label: "Standard wristband 3.5 x 1.25 in", width: 3.5, height: 1.25, unit: "in" },
   { id: "metric-compact", label: "Compact 9 x 3.5 cm", width: 9, height: 3.5, unit: "cm" },
 ];
-
-export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
-  roster: {
-    playerCount: 7,
-  },
-  field: {
-    backgroundColor: "#fff8ee",
-  },
-  print: {
-    presetId: null,
-    width: 8.5,
-    height: 11,
-    unit: "in",
-  },
-  layout: {
-    rowsPerPage: 4,
-    columnsPerPage: 1,
-    playsPerPage: 4,
-    cardAspectRatio: Number((8.5 / (11 / 4)).toFixed(3)),
-  },
-  export: {
-    includePlayNumber: true,
-    includePlayName: true,
-  },
-};
 
 export function getPrintSpacing(unit: PrintSettings["unit"]) {
   return unit === "in" ? 0 : 0;
@@ -201,6 +178,62 @@ const PLAYER_LAYOUTS: Record<PlayerCount, Array<Omit<PlayerToken, "id">>> = {
   ],
 };
 
+function sanitizePlayerLabel(value: string, fallback: string) {
+  const normalized = value.trim().toUpperCase().slice(0, 4);
+  return normalized || fallback;
+}
+
+function sanitizePlayerColor(value: string, fallback: string) {
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+export function getDefaultRosterPlayers(playerCount: PlayerCount): PlaySetRosterPlayer[] {
+  return PLAYER_LAYOUTS[playerCount].map((player) => ({
+    label: player.label,
+    color: player.color,
+  }));
+}
+
+function normalizeRosterPlayers(input: PlaySetSettings["roster"] | undefined): PlaySetRosterPlayer[] {
+  const playerCount = input?.playerCount ?? DEFAULT_PLAY_SET_SETTINGS.roster.playerCount;
+  const defaults = getDefaultRosterPlayers(playerCount);
+
+  return defaults.map((player, index) => {
+    const provided = input?.players?.[index];
+    return {
+      label: sanitizePlayerLabel(provided?.label ?? player.label, player.label),
+      color: sanitizePlayerColor(provided?.color ?? player.color, player.color),
+    };
+  });
+}
+
+export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
+  roster: {
+    playerCount: 7,
+    players: getDefaultRosterPlayers(7),
+  },
+  field: {
+    backgroundColor: "#fff8ee",
+    matchRouteColorToPlayer: false,
+  },
+  print: {
+    presetId: null,
+    width: 8.5,
+    height: 11,
+    unit: "in",
+  },
+  layout: {
+    rowsPerPage: 4,
+    columnsPerPage: 1,
+    playsPerPage: 4,
+    cardAspectRatio: Number((8.5 / (11 / 4)).toFixed(3)),
+  },
+  export: {
+    includePlayNumber: true,
+    includePlayName: true,
+  },
+};
+
 export function clampPoint(point: Point, layout = BOARD_LAYOUT): Point {
   return {
     x: Math.min(layout.width - 4, Math.max(4, point.x)),
@@ -223,9 +256,15 @@ function cloneTextAnnotations(textAnnotations: TextAnnotation[]) {
   return textAnnotations.map((textAnnotation) => ({ ...textAnnotation }));
 }
 
-export function createPlayers(playerCount: PlayerCount, layout: FieldLayout = BOARD_LAYOUT): PlayerToken[] {
-  return PLAYER_LAYOUTS[playerCount].map((player) => ({
+export function createPlayers(
+  playerCount: PlayerCount,
+  layout: FieldLayout = BOARD_LAYOUT,
+  rosterPlayers: PlaySetRosterPlayer[] = getDefaultRosterPlayers(playerCount),
+): PlayerToken[] {
+  return PLAYER_LAYOUTS[playerCount].map((player, index) => ({
     ...player,
+    label: sanitizePlayerLabel(rosterPlayers[index]?.label ?? player.label, player.label),
+    color: sanitizePlayerColor(rosterPlayers[index]?.color ?? player.color, player.color),
     id: makeId("player"),
     x: scaleValue(player.x, BOARD_LAYOUT.width, layout.width),
     y: scaleValue(player.y, BOARD_LAYOUT.height, layout.height),
@@ -250,7 +289,7 @@ function sameFieldLayout(a: FieldLayout, b: FieldLayout) {
   );
 }
 
-export function normalizePlaySetSettings(input?: Partial<PlaySetSettings> | null): PlaySetSettings {
+export function normalizePlaySetSettings(input?: PartialPlaySetSettings | null): PlaySetSettings {
   const rawInputUnit = (input?.print as { unit?: string } | undefined)?.unit;
   const resolvedUnit =
     rawInputUnit === "in" || rawInputUnit === "cm"
@@ -301,12 +340,20 @@ export function normalizePlaySetSettings(input?: Partial<PlaySetSettings> | null
 
   return {
     roster: {
-      ...DEFAULT_PLAY_SET_SETTINGS.roster,
-      ...(input?.roster ?? {}),
+      playerCount:
+        input?.roster?.playerCount ?? DEFAULT_PLAY_SET_SETTINGS.roster.playerCount,
+      players: normalizeRosterPlayers({
+        ...DEFAULT_PLAY_SET_SETTINGS.roster,
+        ...(input?.roster ?? {}),
+      }),
     },
     field: {
       ...DEFAULT_PLAY_SET_SETTINGS.field,
       ...(input?.field ?? {}),
+      matchRouteColorToPlayer:
+        typeof input?.field?.matchRouteColorToPlayer === "boolean"
+          ? input.field.matchRouteColorToPlayer
+          : DEFAULT_PLAY_SET_SETTINGS.field.matchRouteColorToPlayer,
     },
     print: {
       ...print,
@@ -344,7 +391,7 @@ export function normalizePlayDisplaySettings(
   };
 }
 
-export function createPlaySet(name = "New Play Set", settings?: Partial<PlaySetSettings> | null): PlaySet {
+export function createPlaySet(name = "New Play Set", settings?: PartialPlaySetSettings | null): PlaySet {
   const now = new Date().toISOString();
 
   return {
@@ -377,7 +424,7 @@ export function createPlayDocument({
     notes: "",
     playNumber,
     fieldLayout,
-    players: createPlayers(settings.roster.playerCount, fieldLayout),
+    players: createPlayers(settings.roster.playerCount, fieldLayout, settings.roster.players),
     paths: [],
     handoffs: [],
     textAnnotations: [],
@@ -497,10 +544,22 @@ export function applyPlaySetSettingsToPlay(play: PlayDocument, settings: PlaySet
   const nextLayout = getEditorFieldLayout(settings);
   const currentCount = play.players.length as PlayerCount;
   if (currentCount === settings.roster.playerCount) {
-    return remapPlayToFieldLayout(play, nextLayout);
+    const remapped = remapPlayToFieldLayout(play, nextLayout);
+
+    return touchPlay({
+      ...remapped,
+      players: remapped.players.map((player, index) => ({
+        ...player,
+        label: sanitizePlayerLabel(settings.roster.players[index]?.label ?? player.label, player.label),
+        color: sanitizePlayerColor(settings.roster.players[index]?.color ?? player.color, player.color),
+      })),
+    });
   }
 
-  return remapFormation(play, settings.roster.playerCount, nextLayout);
+  return touchPlay({
+    ...remapFormation(play, settings.roster.playerCount, nextLayout),
+    players: createPlayers(settings.roster.playerCount, nextLayout, settings.roster.players),
+  });
 }
 
 export function normalizeStoredPlayPayload(input?: StoredPlayPayload | null): StoredPlayPayload {

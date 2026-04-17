@@ -47,6 +47,7 @@ type DragState =
 
 const markerId = "play-arrow";
 const motionMarkerId = "motion-arrow";
+const DEFAULT_ROUTE_COLOR = "#000000";
 
 function getMidpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -55,6 +56,10 @@ function getMidpoint(a: Point, b: Point): Point {
 function getTextBoundsWidth(text: string) {
   const displayText = text || "Text";
   return Math.max(10, displayText.length * 2.4 + 4);
+}
+
+function getRouteColor(playerColor: string, playSetSettings: PlaySetSettings) {
+  return playSetSettings.field.matchRouteColorToPlayer ? playerColor : DEFAULT_ROUTE_COLOR;
 }
 
 export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Playboard(
@@ -267,7 +272,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
             refY="1.6"
             viewBox="0 0 3.2 3.2"
           >
-            <path d="M 0 0.3 L 3 1.6 L 0 2.9 z" fill={theme.route} />
+            <path d="M 0 0.3 L 3 1.6 L 0 2.9 z" fill="context-stroke" />
           </marker>
           <marker
             id={motionMarkerId}
@@ -279,7 +284,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
             refY="1.6"
             viewBox="0 0 3.2 3.2"
           >
-            <path d="M 0 0.3 L 3 1.6 L 0 2.9 z" fill={theme.motion} />
+            <path d="M 0 0.3 L 3 1.6 L 0 2.9 z" fill="context-stroke" />
           </marker>
         </defs>
 
@@ -379,6 +384,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
             return null;
           }
 
+          const pathColor = getRouteColor(player.color, playSetSettings);
           const pathData = buildSmoothPathData(buildPolylinePoints(player, path));
           const selected = path.id === selectedPathId;
           return (
@@ -396,7 +402,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                     onPathPress?.(path.id);
                   }
                 }}
-                stroke={path.kind === "route" ? theme.route : theme.motion}
+                stroke={pathColor}
                 strokeDasharray={path.kind === "motion" ? "3 2" : undefined}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -434,6 +440,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                 return null;
               }
 
+              const draftPathColor = getRouteColor(player.color, playSetSettings);
               const pathData = buildSmoothPathData([player, ...draftPath.points]);
               return (
                 <path
@@ -441,7 +448,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                   data-testid={enableTestIds ? "draft-path" : undefined}
                   fill="none"
                   markerEnd={`url(#${draftPath.kind === "route" ? markerId : motionMarkerId})`}
-                  stroke={draftPath.kind === "route" ? theme.route : theme.motion}
+                  stroke={draftPathColor}
                   strokeDasharray={draftPath.kind === "motion" ? "3 2" : undefined}
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -543,7 +550,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                 stroke={handoffSource ? theme.scrimmage : selected ? "#10231a" : "rgba(15, 23, 32, 0.55)"}
                 strokeWidth={handoffSource ? 1.4 : selected ? 1.1 : 0.7}
               />
-              <text fill="#10231a" fontSize="2.9" fontWeight="700" textAnchor="middle" x={player.x} y={player.y + 1}>
+              <text fill="#ffffff" fontSize="2.9" fontWeight="800" textAnchor="middle" x={player.x} y={player.y + 1}>
                 {player.label}
               </text>
             </g>

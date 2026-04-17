@@ -18,6 +18,9 @@ import {
 describe("playbook helpers", () => {
   it("normalizes Play Set settings and derives paging from rows and columns", () => {
     const settings = normalizePlaySetSettings({
+      field: {
+        matchRouteColorToPlayer: true,
+      },
       print: {
         presetId: null,
         width: 8,
@@ -38,6 +41,7 @@ describe("playbook helpers", () => {
     expect(settings.layout.playsPerPage).toBe(4);
     expect(settings.layout.cardAspectRatio).toBe(Number((card.width / card.height).toFixed(3)));
     expect(settings.print.height).toBe(10);
+    expect(settings.field.matchRouteColorToPlayer).toBe(true);
   });
 
   it("flags portrait printable cards as invalid", () => {
@@ -140,6 +144,31 @@ describe("playbook helpers", () => {
     expect(play.displaySettings).toEqual(normalizePlayDisplaySettings());
     expect(play.fieldLayout).toEqual(getEditorFieldLayout(playSet.settings));
     expect(play.textAnnotations).toEqual([]);
+  });
+
+  it("applies set-level roster labels and colors to matching players", () => {
+    const playSet = createPlaySet("Team A");
+    const play = createPlayDocument({
+      playSetId: playSet.id,
+      playNumber: 1,
+      settings: playSet.settings,
+    });
+    const updatedSettings = normalizePlaySetSettings({
+      ...playSet.settings,
+      roster: {
+        ...playSet.settings.roster,
+        players: playSet.settings.roster.players.map((player, index) =>
+          index === 0 ? { ...player, label: "FL", color: "#123456" } : player,
+        ),
+      },
+    });
+
+    const remapped = applyPlaySetSettingsToPlay(play, updatedSettings);
+
+    expect(remapped.players[0].id).toBe(play.players[0].id);
+    expect(remapped.players[0].label).toBe("FL");
+    expect(remapped.players[0].color).toBe("#123456");
+    expect(remapped.players[1].label).toBe(playSet.settings.roster.players[1].label);
   });
 
   it("preserves an explicitly hidden yard-line setting", () => {

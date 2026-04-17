@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { PageLayoutPreview } from "./PageLayoutPreview";
 import { convertPrintMeasurement, isLandscapeCard, normalizePlaySetSettings } from "../lib/playbook";
-import type { PlaySetSettings, PlayerCount, Unit } from "../lib/types";
+import type { PartialPlaySetSettings, PlayerCount, Unit } from "../lib/types";
 
 interface CreatePlaySetModalProps {
   open: boolean;
   defaultName: string;
   onClose: () => void;
-  onSubmit: (payload: { name: string; settings: Partial<PlaySetSettings> }) => void;
+  onSubmit: (payload: { name: string; settings: PartialPlaySetSettings }) => void;
 }
 
 export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: CreatePlaySetModalProps) {
