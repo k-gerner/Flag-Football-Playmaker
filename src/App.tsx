@@ -1246,10 +1246,7 @@ export function AppShell({ backend }: AppShellProps) {
           <main className="flex min-w-0 flex-col gap-5">
             {activePlay ? (
               <Toolbar
-                canRedo={canRedo}
-                canUndo={canUndo}
                 draftPath={draftPath}
-                onRedo={handleRedoBoardChange}
                 onToolChange={(nextTool) => {
                   setTool(nextTool);
                   setHandoffSourceId(null);
@@ -1257,7 +1254,6 @@ export function AppShell({ backend }: AppShellProps) {
                     setDraftPath(null);
                   }
                 }}
-                onUndo={handleUndoBoardChange}
                 tool={tool}
               />
             ) : (
@@ -1285,10 +1281,30 @@ export function AppShell({ backend }: AppShellProps) {
                     >
                       {hasUnsavedActivePlayChanges ? "Unsaved Changes" : "Saved"}
                     </div>
-                    <p className="mt-2 font-display text-xl font-bold text-white">{activePlay.name}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <div className="shrink-0 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/85">
+                        Play #{activePlay.playNumber}
+                      </div>
+                      <p className="min-w-0 font-display text-xl font-bold text-white">{activePlay.name}</p>
+                    </div>
                   </div>
-                  <div className="shrink-0 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/85">
-                    Play #{activePlay.playNumber}
+                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    <button
+                      className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={!canUndo}
+                      onClick={handleUndoBoardChange}
+                      type="button"
+                    >
+                      Undo
+                    </button>
+                    <button
+                      className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={!canRedo}
+                      onClick={handleRedoBoardChange}
+                      type="button"
+                    >
+                      Redo
+                    </button>
                   </div>
                 </div>
 
