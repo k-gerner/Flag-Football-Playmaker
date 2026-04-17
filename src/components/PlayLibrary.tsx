@@ -435,14 +435,6 @@ export function PlayLibrary({
                   ref={playRailRef}
                 >
                   <div className="inline-flex min-w-max items-start gap-2 pr-0.5">
-                    <CreateCard
-                      description={`Add a new diagram to ${activePlaySet.name} and start drawing assignments.`}
-                      onClick={handleCreatePlayClick}
-                      railItem
-                      testId="new-play-card"
-                      title="New Play"
-                    />
-
                     {plays.length === 0 ? (
                       <div
                         className="flex min-h-[184px] w-[14.5rem] flex-none items-center rounded-[24px] border border-dashed border-black/10 bg-white/60 p-4 text-sm text-ink-950/60"
@@ -513,8 +505,16 @@ export function PlayLibrary({
                             </button>
                           </div>
                         </article>
-                      );
-                    })}
+                        );
+                      })}
+
+                    <CreateCard
+                      description={`Add a new diagram to ${activePlaySet.name} and start drawing assignments.`}
+                      onClick={handleCreatePlayClick}
+                      railItem
+                      testId="new-play-card"
+                      title="New Play"
+                    />
                   </div>
                 </div>
 

@@ -203,7 +203,7 @@ describe("AppShell", () => {
     const newCard = within(rail).getByTestId("new-play-card");
     const existingCard = within(rail).getByTestId(`play-card-${play1.id}`);
 
-    expect(newCard.compareDocumentPosition(existingCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(existingCard.compareDocumentPosition(newCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(rail).getByRole("button", { name: /Flood/ }));
 
     expect(screen.queryByTestId("play-picker-rail")).not.toBeInTheDocument();
