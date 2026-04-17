@@ -1557,7 +1557,10 @@ export function AppShell({ backend }: AppShellProps) {
       />
 
       {activePlaySet ? (
-        <div className="pointer-events-none absolute -left-[99999px] top-0 flex flex-col gap-6" aria-hidden="true">
+        <div
+          aria-hidden="true"
+          className="export-preview-staging pointer-events-none absolute -left-[99999px] top-0 flex flex-col gap-6"
+        >
           {displayedSetPlays.map((play) => (
             <ExportPlayCard
               key={play.id}
