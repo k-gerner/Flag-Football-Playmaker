@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthPanel } from "./components/AuthPanel";
 import { CreatePlaySetModal } from "./components/CreatePlaySetModal";
+import { ExportPlayCard } from "./components/ExportPlayCard";
 import { InspectorPanel } from "./components/InspectorPanel";
 import { PlayLibrary } from "./components/PlayLibrary";
 import { Playboard } from "./components/Playboard";
@@ -195,7 +196,7 @@ export function AppShell({ backend }: AppShellProps) {
 
   const playSaveTimers = useRef<Record<string, number>>({});
   const playSetSaveTimers = useRef<Record<string, number>>({});
-  const exportSvgRefs = useRef<Record<string, SVGSVGElement | null>>({});
+  const exportPreviewRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const boardHistoryRef = useRef<Record<string, BoardHistoryState>>({});
   const activeTextEditRef = useRef<{ playId: string | null; textId: string | null }>({
     playId: null,
@@ -1161,7 +1162,7 @@ export function AppShell({ backend }: AppShellProps) {
       return;
     }
 
-    await exportPlaySetToPdf(activePlaySet, activeSetPlays, exportSvgRefs.current);
+    await exportPlaySetToPdf(activePlaySet, activeSetPlays, exportPreviewRefs.current);
   }
 
   if (authState.status === "loading" || workspaceBusy) {
@@ -1457,24 +1458,15 @@ export function AppShell({ backend }: AppShellProps) {
       />
 
       {activePlaySet ? (
-        <div className="absolute -left-[99999px] top-0 h-0 w-0 overflow-hidden" aria-hidden="true">
+        <div className="pointer-events-none absolute -left-[99999px] top-0 flex flex-col gap-6" aria-hidden="true">
           {displayedSetPlays.map((play) => (
-            <Playboard
-              accessibleLabel={null}
-              draftPath={null}
-              enableTestIds={false}
-              handoffSourceId={null}
-              interactive={false}
+            <ExportPlayCard
               key={play.id}
               play={play}
-              playSetSettings={activePlaySet.settings}
               ref={(node) => {
-                exportSvgRefs.current[play.id] = node;
+                exportPreviewRefs.current[play.id] = node;
               }}
-              selectedPathId={null}
-              selectedPlayerId={null}
-              selectedTextId={null}
-              tool="select"
+              playSet={activePlaySet}
             />
           ))}
         </div>

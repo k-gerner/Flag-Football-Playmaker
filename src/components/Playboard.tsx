@@ -21,6 +21,7 @@ interface PlayboardProps {
   interactive?: boolean;
   accessibleLabel?: string | null;
   enableTestIds?: boolean;
+  frameVariant?: "editor" | "export";
   onPlayerPress?: (playerId: string) => void;
   onBoardPress?: (point: Point) => void;
   onBackgroundPress?: () => void;
@@ -75,6 +76,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
     interactive = true,
     accessibleLabel = "Playboard",
     enableTestIds = interactive,
+    frameVariant = "editor",
     onPlayerPress,
     onBoardPress,
     onBackgroundPress,
@@ -98,6 +100,10 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
   const [dragState, setDragState] = useState<DragState>(null);
   const theme = BOARD_THEME;
   const layout = play.fieldLayout;
+  const frameClassName =
+    frameVariant === "export"
+      ? "relative overflow-hidden border border-black"
+      : "relative overflow-hidden rounded-[36px] border border-white/20 shadow-panel";
 
   const updateDragState = (nextDragState: DragState) => {
     dragStateRef.current = nextDragState;
@@ -239,7 +245,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
 
   return (
     <div
-      className="relative overflow-hidden rounded-[36px] border border-white/20 shadow-panel"
+      className={frameClassName}
       style={{ backgroundColor: playSetSettings.field.backgroundColor }}
     >
       <div className="absolute inset-0 opacity-30" style={{ background: theme.cardBackground }} />
