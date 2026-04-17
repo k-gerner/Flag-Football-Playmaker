@@ -6,6 +6,7 @@ import type { PlaySet } from "../lib/types";
 interface PlaySetSettingsModalProps {
   playSet: PlaySet | null;
   open: boolean;
+  exporting?: boolean;
   onClose: () => void;
   onSave: (payload: { name: string; settings: PlaySet["settings"] }) => void;
   onExportPlaySet: () => void;
@@ -14,6 +15,7 @@ interface PlaySetSettingsModalProps {
 export function PlaySetSettingsModal({
   playSet,
   open,
+  exporting = false,
   onClose,
   onSave,
   onExportPlaySet,
@@ -76,11 +78,13 @@ export function PlaySetSettingsModal({
           </div>
           <div className="flex items-center gap-2">
             <button
-              className="rounded-full bg-ink-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink-950/85"
+              aria-busy={exporting}
+              className="rounded-full bg-ink-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink-950/85 disabled:cursor-not-allowed disabled:bg-ink-950/45"
+              disabled={exporting}
               onClick={onExportPlaySet}
               type="button"
             >
-              Export Set PDF
+              {exporting ? "Exporting PDF..." : "Export Set PDF"}
             </button>
             <button
               aria-label="Close play set settings"

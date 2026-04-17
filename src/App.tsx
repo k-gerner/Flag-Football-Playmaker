@@ -186,6 +186,7 @@ export function AppShell({ backend }: AppShellProps) {
   const [copyTargetPlaySetId, setCopyTargetPlaySetId] = useState("");
   const [isCreatePlaySetOpen, setIsCreatePlaySetOpen] = useState(false);
   const [isPlaySetSettingsOpen, setIsPlaySetSettingsOpen] = useState(false);
+  const [isExportingPlaySet, setIsExportingPlaySet] = useState(false);
   const [tool, setTool] = useState<ToolMode>("select");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
@@ -1158,11 +1159,17 @@ export function AppShell({ backend }: AppShellProps) {
   }
 
   async function handleExportPlaySet() {
-    if (!activePlaySet) {
+    if (!activePlaySet || isExportingPlaySet) {
       return;
     }
 
-    await exportPlaySetToPdf(activePlaySet, activeSetPlays, exportPreviewRefs.current);
+    setIsExportingPlaySet(true);
+
+    try {
+      await exportPlaySetToPdf(activePlaySet, activeSetPlays, exportPreviewRefs.current);
+    } finally {
+      setIsExportingPlaySet(false);
+    }
   }
 
   if (authState.status === "loading" || workspaceBusy) {
@@ -1410,6 +1417,7 @@ export function AppShell({ backend }: AppShellProps) {
       />
 
       <PlaySetSettingsModal
+        exporting={isExportingPlaySet}
         onClose={() => setIsPlaySetSettingsOpen(false)}
         onExportPlaySet={handleExportPlaySet}
         onSave={async ({ name, settings }) => {
