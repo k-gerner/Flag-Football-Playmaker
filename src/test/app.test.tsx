@@ -315,6 +315,19 @@ describe("AppShell", () => {
     expect(thirdPlayPlayer.querySelector("circle")).toHaveAttribute("fill", "#123456");
   });
 
+  it("keeps player label and color editing out of the play inspector", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+
+    fireEvent.pointerDown(await screen.findByTestId("player-Q"));
+
+    expect(await screen.findByText("Player Q")).toBeInTheDocument();
+    expect(screen.queryByText("Player label")).not.toBeInTheDocument();
+    expect(screen.queryByText("Player color")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Edit player labels and colors in Play Set Settings/i),
+    ).toBeInTheDocument();
+  });
+
   it("shows a play number banner on the board when enabled in play set settings", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
 

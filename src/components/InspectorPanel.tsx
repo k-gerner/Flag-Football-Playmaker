@@ -25,7 +25,6 @@ interface InspectorPanelProps {
   onPlayDisplaySettingsChange: (displaySettings: PlayDisplaySettings) => void;
   onCopyTargetPlaySetChange: (playSetId: string) => void;
   onCopyPlayToSet: () => void;
-  onPlayerUpdate: (playerId: string, changes: Partial<Pick<PlayerToken, "label" | "color">>) => void;
   onDeleteSelectedPath: () => void;
   onTextAnnotationChange: (textId: string, text: string) => void;
   onDeleteSelectedText: () => void;
@@ -50,7 +49,6 @@ export function InspectorPanel({
   onPlayDisplaySettingsChange,
   onCopyTargetPlaySetChange,
   onCopyPlayToSet,
-  onPlayerUpdate,
   onDeleteSelectedPath,
   onTextAnnotationChange,
   onDeleteSelectedText,
@@ -249,27 +247,9 @@ export function InspectorPanel({
         </div>
 
         {selectedPlayer ? (
-          <div className="mt-3 grid gap-3">
-            <label className="block">
-              <span className="mb-1 block text-sm font-semibold text-ink-950/70">Player label</span>
-              <input
-                className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
-                maxLength={4}
-                onChange={(event) =>
-                  onPlayerUpdate(selectedPlayer.id, { label: event.target.value.toUpperCase() })
-                }
-                value={selectedPlayer.label}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-sm font-semibold text-ink-950/70">Player color</span>
-              <input
-                className="h-11 w-full rounded-2xl border border-black/10 bg-white/80 p-1"
-                onChange={(event) => onPlayerUpdate(selectedPlayer.id, { color: event.target.value })}
-                type="color"
-                value={selectedPlayer.color}
-              />
-            </label>
+          <div className="mt-3 rounded-2xl border border-black/10 bg-white/75 p-3 text-sm text-ink-950/65">
+            Edit player labels and colors in Play Set Settings so they stay synced across every play in this
+            set.
           </div>
         ) : selectedText ? (
           <div className="mt-3 grid gap-3">

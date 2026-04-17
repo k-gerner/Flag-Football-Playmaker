@@ -1114,14 +1114,6 @@ export function AppShell({ backend }: AppShellProps) {
     }));
   }
 
-  function handlePlayerUpdate(playerId: string, changes: Partial<Pick<PlayerToken, "label" | "color">>) {
-    pushBoardHistorySnapshot();
-    updateActivePlay((play) => ({
-      ...play,
-      players: play.players.map((player) => (player.id === playerId ? { ...player, ...changes } : player)),
-    }));
-  }
-
   function handleTextAnnotationChange(textId: string, text: string) {
     updateActivePlay((play) => ({
       ...play,
@@ -1409,7 +1401,6 @@ export function AppShell({ backend }: AppShellProps) {
               }}
               onPlayNameChange={(name) => updateActivePlayInspectorDraft((play) => ({ ...play, name }))}
               onPlayNotesChange={(notes) => updateActivePlayInspectorDraft((play) => ({ ...play, notes }))}
-              onPlayerUpdate={handlePlayerUpdate}
               onTextAnnotationChange={handleTextAnnotationChange}
               onTextEditEnd={endTextEditSession}
               onTextEditStart={beginTextEditSession}
