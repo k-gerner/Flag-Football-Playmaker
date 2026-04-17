@@ -1251,40 +1251,9 @@ export function AppShell({ backend }: AppShellProps) {
             {activePlaySet && activePlay ? (
               <section className="relative grid gap-4 rounded-[38px] bg-ink-950/80 p-4 shadow-panel sm:p-5">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div
-                      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
-                        hasUnsavedActivePlayChanges
-                          ? "bg-red-500/20 text-red-200 ring-1 ring-inset ring-red-400/35"
-                          : "bg-emerald-500/20 text-emerald-200 ring-1 ring-inset ring-emerald-400/35"
-                      }`}
-                    >
-                      {hasUnsavedActivePlayChanges ? "Unsaved Changes" : "Saved"}
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                      <div className="shrink-0 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/85">
-                        Play #{activePlay.playNumber}
-                      </div>
-                      <p className="min-w-0 font-display text-xl font-bold text-white">{activePlay.name}</p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                    <button
-                      className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={!canUndo}
-                      onClick={handleUndoBoardChange}
-                      type="button"
-                    >
-                      Undo
-                    </button>
-                    <button
-                      className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={!canRedo}
-                      onClick={handleRedoBoardChange}
-                      type="button"
-                    >
-                      Redo
-                    </button>
+                  <p className="min-w-0 font-display text-xl font-bold text-white">{activePlay.name}</p>
+                  <div className="shrink-0 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/85">
+                    Play #{activePlay.playNumber}
                   </div>
                 </div>
 
@@ -1332,6 +1301,35 @@ export function AppShell({ backend }: AppShellProps) {
                         ? "Click anywhere on the board to drop a note."
                         : "Use select mode to drag players and edit route handles."}
                 </p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div
+                    className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
+                      hasUnsavedActivePlayChanges
+                        ? "bg-red-500/20 text-red-200 ring-1 ring-inset ring-red-400/35"
+                        : "bg-emerald-500/20 text-emerald-200 ring-1 ring-inset ring-emerald-400/35"
+                    }`}
+                  >
+                    {hasUnsavedActivePlayChanges ? "Unsaved Changes" : "Saved"}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    <button
+                      className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={!canUndo}
+                      onClick={handleUndoBoardChange}
+                      type="button"
+                    >
+                      Undo
+                    </button>
+                    <button
+                      className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={!canRedo}
+                      onClick={handleRedoBoardChange}
+                      type="button"
+                    >
+                      Redo
+                    </button>
+                  </div>
+                </div>
               </section>
             ) : activePlaySet ? (
               <section className="grid gap-4 rounded-[38px] bg-ink-950/80 p-8 text-center text-white/80 shadow-panel">
