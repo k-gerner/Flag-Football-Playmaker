@@ -44,6 +44,8 @@ describe("PlaySetSettingsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /Appearance/i }));
 
     expect(screen.getByLabelText("Card background color")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Player size" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Line Thickness" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Set name" })).not.toBeInTheDocument();
   });
 

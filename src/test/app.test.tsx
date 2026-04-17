@@ -607,6 +607,46 @@ describe("AppShell", () => {
     expect(path).toHaveAttribute("stroke", "#65d0b3");
   });
 
+  it("updates player circle size and route thickness from play set settings", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+    await mockBoardRect();
+
+    fireEvent.click(screen.getByRole("button", { name: "Route" }));
+    drawGesture(screen.getByTestId("player-Q"), [
+      { clientX: 600, clientY: 700 },
+      { clientX: 620, clientY: 520 },
+      { clientX: 600, clientY: 240 },
+    ]);
+
+    const playerCircle = screen.getByTestId("player-Q").querySelector("circle");
+    const path = screen.getByTestId(/path-/);
+    const playboard = screen.getByTestId("playboard");
+    const routeMarker = playboard.querySelector("marker#play-arrow");
+
+    expect(playerCircle).toHaveAttribute("r", "4.2");
+    expect(path).toHaveAttribute("stroke-width", "1.6");
+    expect(routeMarker).toHaveAttribute("markerWidth", "3.2");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
+    fireEvent.click(within(modal).getByRole("button", { name: /Appearance/i }));
+    fireEvent.change(within(modal).getByRole("combobox", { name: "Player size" }), {
+      target: { value: "L" },
+    });
+    fireEvent.change(within(modal).getByRole("combobox", { name: "Line Thickness" }), {
+      target: { value: "thick" },
+    });
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("play-set-settings-modal")).not.toBeInTheDocument();
+    });
+
+    expect(playerCircle).toHaveAttribute("r", "4.9");
+    expect(path).toHaveAttribute("stroke-width", "2.3");
+    expect(routeMarker).toHaveAttribute("markerWidth", "4.1");
+  });
+
   it("ignores tiny accidental route drags", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
     await mockBoardRect();

@@ -425,6 +425,50 @@ export function PlaySetSettingsModal({
                   />
                 </label>
 
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-semibold text-ink-950/70">Player size</span>
+                    <select
+                      className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      onChange={(event) =>
+                        updateDraftSettings((current) => ({
+                          ...current,
+                          field: {
+                            ...current.field,
+                            playerSize: event.target.value as PlaySet["settings"]["field"]["playerSize"],
+                          },
+                        }))
+                      }
+                      value={draftSettings.field.playerSize}
+                    >
+                      <option value="S">S</option>
+                      <option value="M">M</option>
+                      <option value="L">L</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-semibold text-ink-950/70">Line Thickness</span>
+                    <select
+                      className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      onChange={(event) =>
+                        updateDraftSettings((current) => ({
+                          ...current,
+                          field: {
+                            ...current.field,
+                            lineThickness: event.target.value as PlaySet["settings"]["field"]["lineThickness"],
+                          },
+                        }))
+                      }
+                      value={draftSettings.field.lineThickness}
+                    >
+                      <option value="thin">Thin</option>
+                      <option value="medium">Medium</option>
+                      <option value="thick">Thick</option>
+                    </select>
+                  </label>
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {draftSettings.roster.players.map((player, index) => (
                     <div

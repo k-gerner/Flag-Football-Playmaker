@@ -1,7 +1,9 @@
 import { makeId } from "./id";
 import type {
   FieldLayout,
+  LineThickness,
   PartialPlaySetSettings,
+  PlayerSize,
   PlayDisplaySettings,
   PlayDocument,
   PlayerCount,
@@ -187,6 +189,16 @@ function sanitizePlayerColor(value: string, fallback: string) {
   return /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
 }
 
+function normalizePlayerSize(value: unknown): PlayerSize {
+  return value === "S" || value === "M" || value === "L" ? value : DEFAULT_PLAY_SET_SETTINGS.field.playerSize;
+}
+
+function normalizeLineThickness(value: unknown): LineThickness {
+  return value === "thin" || value === "medium" || value === "thick"
+    ? value
+    : DEFAULT_PLAY_SET_SETTINGS.field.lineThickness;
+}
+
 export function getDefaultRosterPlayers(playerCount: PlayerCount): PlaySetRosterPlayer[] {
   return PLAYER_LAYOUTS[playerCount].map((player) => ({
     label: player.label,
@@ -216,6 +228,8 @@ export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
     backgroundColor: "#fff8ee",
     matchRouteColorToPlayer: false,
     showPlayNumberBanner: false,
+    playerSize: "M",
+    lineThickness: "medium",
   },
   print: {
     presetId: null,
@@ -270,6 +284,26 @@ export function createPlayers(
     x: scaleValue(player.x, BOARD_LAYOUT.width, layout.width),
     y: scaleValue(player.y, BOARD_LAYOUT.height, layout.height),
   }));
+}
+
+export function getPlayerCircleRadius(settings: PlaySetSettings) {
+  const sizeMap: Record<PlayerSize, number> = {
+    S: 3.5,
+    M: 4.2,
+    L: 4.9,
+  };
+
+  return sizeMap[settings.field.playerSize];
+}
+
+export function getRouteStrokeWidth(settings: PlaySetSettings) {
+  const sizeMap: Record<LineThickness, number> = {
+    thin: 0.8,
+    medium: 1.1,
+    thick: 1.8,
+  };
+
+  return sizeMap[settings.field.lineThickness];
 }
 
 function scaleValue(value: number, fromMax: number, toMax: number) {
@@ -351,6 +385,8 @@ export function normalizePlaySetSettings(input?: PartialPlaySetSettings | null):
     field: {
       ...DEFAULT_PLAY_SET_SETTINGS.field,
       ...(input?.field ?? {}),
+      playerSize: normalizePlayerSize(input?.field?.playerSize),
+      lineThickness: normalizeLineThickness(input?.field?.lineThickness),
       matchRouteColorToPlayer:
         typeof input?.field?.matchRouteColorToPlayer === "boolean"
           ? input.field.matchRouteColorToPlayer

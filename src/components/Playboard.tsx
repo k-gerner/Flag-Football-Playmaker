@@ -6,7 +6,7 @@ import {
   clientToBoardPoint,
   FREEHAND_SAMPLE_MIN_DISTANCE,
 } from "../lib/geometry";
-import { BOARD_THEME, buildPolylinePoints, clampPoint } from "../lib/playbook";
+import { BOARD_THEME, buildPolylinePoints, clampPoint, getPlayerCircleRadius, getRouteStrokeWidth } from "../lib/playbook";
 import type { DraftPath, PlayDocument, PlaySetSettings, Point, RouteKind, ToolMode } from "../lib/types";
 
 interface PlayboardProps {
@@ -102,6 +102,22 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
   const [dragState, setDragState] = useState<DragState>(null);
   const theme = BOARD_THEME;
   const layout = play.fieldLayout;
+  const playerCircleRadius = getPlayerCircleRadius(playSetSettings);
+  const routeStrokeWidth = getRouteStrokeWidth(playSetSettings);
+  const selectedRouteStrokeWidth = Number((routeStrokeWidth + 0.5).toFixed(2));
+  const draftRouteStrokeWidth = Number((routeStrokeWidth + 0.1).toFixed(2));
+  const routeMarkerSize =
+    playSetSettings.field.lineThickness === "thick"
+      ? 4.1
+      : playSetSettings.field.lineThickness === "thin"
+        ? 3
+        : 3.2;
+  const routeMarkerCenter = Number((routeMarkerSize / 2).toFixed(2));
+  const routeMarkerInset = Number((routeMarkerSize * 0.09).toFixed(2));
+  const routeMarkerTipX = Number((routeMarkerSize - routeMarkerInset).toFixed(2));
+  const routeMarkerPath = `M 0 ${routeMarkerInset} L ${routeMarkerTipX} ${routeMarkerCenter} L 0 ${
+    routeMarkerSize - routeMarkerInset
+  } z`;
   const frameClassName =
     frameVariant === "export"
       ? "relative overflow-hidden border border-black"
@@ -275,27 +291,27 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
         <defs>
           <marker
             id={markerId}
-            markerHeight="3.2"
+            markerHeight={routeMarkerSize}
             markerUnits="userSpaceOnUse"
-            markerWidth="3.2"
+            markerWidth={routeMarkerSize}
             orient="auto-start-reverse"
             refX="0"
-            refY="1.6"
-            viewBox="0 0 3.2 3.2"
+            refY={routeMarkerCenter}
+            viewBox={`0 0 ${routeMarkerSize} ${routeMarkerSize}`}
           >
-            <path d="M 0 0.3 L 3 1.6 L 0 2.9 z" fill="context-stroke" />
+            <path d={routeMarkerPath} fill="context-stroke" />
           </marker>
           <marker
             id={motionMarkerId}
-            markerHeight="3.2"
+            markerHeight={routeMarkerSize}
             markerUnits="userSpaceOnUse"
-            markerWidth="3.2"
+            markerWidth={routeMarkerSize}
             orient="auto-start-reverse"
             refX="0"
-            refY="1.6"
-            viewBox="0 0 3.2 3.2"
+            refY={routeMarkerCenter}
+            viewBox={`0 0 ${routeMarkerSize} ${routeMarkerSize}`}
           >
-            <path d="M 0 0.3 L 3 1.6 L 0 2.9 z" fill="context-stroke" />
+            <path d={routeMarkerPath} fill="context-stroke" />
           </marker>
         </defs>
 
@@ -439,7 +455,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeOpacity={selected ? 1 : 0.9}
-                strokeWidth={selected ? 1.6 : 1.1}
+                strokeWidth={selected ? selectedRouteStrokeWidth : routeStrokeWidth}
               />
               {selected && interactive && tool === "select"
                 ? path.points.map((point, pointIndex) => (
@@ -485,7 +501,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeOpacity="0.8"
-                  strokeWidth="1.2"
+                  strokeWidth={draftRouteStrokeWidth}
                 />
               );
             })()
@@ -578,7 +594,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
                 cx={player.x}
                 cy={player.y}
                 fill={player.color}
-                r="4.2"
+                r={playerCircleRadius}
                 stroke={handoffSource ? theme.scrimmage : selected ? "#10231a" : "rgba(15, 23, 32, 0.55)"}
                 strokeWidth={handoffSource ? 1.4 : selected ? 1.1 : 0.7}
               />

@@ -6,7 +6,9 @@ import {
   createPlaySet,
   getEditorFieldLayout,
   getPlaySetCardDimensions,
+  getPlayerCircleRadius,
   getPlaySetPrintLayoutMetrics,
+  getRouteStrokeWidth,
   isLandscapeCard,
   normalizePlayDisplaySettings,
   normalizePlaySetSettings,
@@ -42,6 +44,22 @@ describe("playbook helpers", () => {
     expect(settings.layout.cardAspectRatio).toBe(Number((card.width / card.height).toFixed(3)));
     expect(settings.print.height).toBe(10);
     expect(settings.field.matchRouteColorToPlayer).toBe(true);
+    expect(settings.field.playerSize).toBe("M");
+    expect(settings.field.lineThickness).toBe("medium");
+  });
+
+  it("normalizes player size and line thickness values", () => {
+    const settings = normalizePlaySetSettings({
+      field: {
+        playerSize: "L",
+        lineThickness: "thick",
+      },
+    });
+
+    expect(settings.field.playerSize).toBe("L");
+    expect(settings.field.lineThickness).toBe("thick");
+    expect(getPlayerCircleRadius(settings)).toBe(4.9);
+    expect(getRouteStrokeWidth(settings)).toBe(1.8);
   });
 
   it("flags portrait printable cards as invalid", () => {

@@ -2,6 +2,8 @@ export type PlayerCount = 5 | 7 | 8;
 export type ToolMode = "select" | "route" | "motion" | "handoff" | "text";
 export type RouteKind = "route" | "motion";
 export type Unit = "in" | "cm";
+export type PlayerSize = "S" | "M" | "L";
+export type LineThickness = "thin" | "medium" | "thick";
 
 export interface Point {
   x: number;
@@ -66,6 +68,8 @@ export interface PlaySetSettings {
     backgroundColor: string;
     matchRouteColorToPlayer: boolean;
     showPlayNumberBanner: boolean;
+    playerSize: PlayerSize;
+    lineThickness: LineThickness;
   };
   print: PrintSettings;
   layout: {
