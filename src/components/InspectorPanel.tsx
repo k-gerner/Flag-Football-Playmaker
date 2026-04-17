@@ -130,7 +130,7 @@ export function InspectorPanel({
               <button
                 aria-checked={showYardLines}
                 aria-label="Toggle yard lines"
-                className={`relative inline-flex h-6 w-11 items-center rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-ember-500/40 ${
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center overflow-hidden rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-ember-500/40 ${
                   showYardLines ? "bg-ember-500" : "bg-ink-950/15"
                 }`}
                 onClick={() =>
@@ -144,8 +144,8 @@ export function InspectorPanel({
               >
                 <span
                   aria-hidden="true"
-                  className={`inline-block h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,32,0.18)] transition-transform ${
-                    showYardLines ? "translate-x-5" : "translate-x-0"
+                  className={`block h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(15,23,32,0.16)] transition-transform ${
+                    showYardLines ? "translate-x-[19px]" : "translate-x-0"
                   }`}
                 />
               </button>
@@ -156,7 +156,7 @@ export function InspectorPanel({
               <button
                 aria-checked={showLineOfScrimmageLabel}
                 aria-label="Toggle line of scrimmage label"
-                className={`relative inline-flex h-6 w-11 items-center rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-ember-500/40 ${
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center overflow-hidden rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-ember-500/40 ${
                   showLineOfScrimmageLabel
                     ? "bg-ember-500"
                     : "bg-ink-950/15"
@@ -175,8 +175,8 @@ export function InspectorPanel({
               >
                 <span
                   aria-hidden="true"
-                  className={`inline-block h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,32,0.18)] transition-transform ${
-                    showLineOfScrimmageLabel ? "translate-x-5" : "translate-x-0"
+                  className={`block h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(15,23,32,0.16)] transition-transform ${
+                    showLineOfScrimmageLabel ? "translate-x-[19px]" : "translate-x-0"
                   }`}
                 />
               </button>
