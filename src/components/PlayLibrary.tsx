@@ -6,6 +6,7 @@ interface PlayLibraryProps {
   playSets: PlaySet[];
   activePlaySet: PlaySet | null;
   activePlaySetId: string | null;
+  exporting?: boolean;
   plays: PlayDocument[];
   activePlayId: string | null;
   onCreatePlaySet: () => void;
@@ -84,6 +85,7 @@ export function PlayLibrary({
   playSets,
   activePlaySet,
   activePlaySetId,
+  exporting = false,
   plays,
   activePlayId,
   onCreatePlaySet,
@@ -232,13 +234,21 @@ export function PlayLibrary({
           <p className="font-display text-lg font-bold text-ink-950">Play Sets</p>
           <div className="flex items-center gap-2">
             <button
-              aria-label="Export play set PDF"
+              aria-busy={exporting}
+              aria-label={exporting ? "Exporting play set PDF" : "Export play set PDF"}
               className="inline-flex h-10 items-center gap-2 rounded-full border border-ink-950/15 bg-white/75 px-3 text-sm font-semibold text-ink-950 transition hover:border-ember-500/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
-              disabled={!activePlaySet}
+              disabled={!activePlaySet || exporting}
               onClick={onExportPlaySet}
               type="button"
             >
-              <IoDownloadOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
+              {exporting ? (
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent"
+                />
+              ) : (
+                <IoDownloadOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
+              )}
               <span>Export</span>
             </button>
             <button

@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { AppShell } from "../App";
 import { PlayLibrary } from "../components/PlayLibrary";
@@ -46,6 +47,33 @@ describe("AppShell", () => {
     });
 
     render(<AppShell backend={backend} />);
+
+    expect(await screen.findByText("Sign in to manage cloud-saved Play Sets.")).toBeInTheDocument();
+  });
+
+  it("shows account actions in the top-right menu and signs out from there", async () => {
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [createPlaySet("Play Set 1")],
+        })}
+      />,
+    );
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("play-set-picker-trigger")).toHaveTextContent("Play Set 1");
+    });
+
+    const trigger = await screen.findByRole("button", { name: "Open account menu" });
+    expect(screen.queryByText("coach@example.com")).not.toBeInTheDocument();
+
+    await user.click(trigger);
+
+    const menu = await screen.findByRole("menu", { name: "Account" });
+    expect(within(menu).getByText("coach@example.com")).toBeInTheDocument();
+
+    await user.click(within(menu).getByRole("menuitem", { name: "Sign out" }));
 
     expect(await screen.findByText("Sign in to manage cloud-saved Play Sets.")).toBeInTheDocument();
   });
@@ -201,7 +229,13 @@ describe("AppShell", () => {
 
   it("exports a play set from the sidebar button", async () => {
     const playSet = createPlaySet("Play Set 1");
-    const exportSpy = vi.spyOn(await import("../lib/pdf"), "exportPlaySetToPdf").mockResolvedValue(undefined);
+    let finishExport: () => void = () => undefined;
+    const exportPromise = new Promise<void>((resolve) => {
+      finishExport = () => resolve();
+    });
+    const exportSpy = vi.spyOn(await import("../lib/pdf"), "exportPlaySetToPdf").mockImplementation(
+      () => exportPromise,
+    );
 
     render(
       <AppShell
@@ -216,6 +250,17 @@ describe("AppShell", () => {
 
     await waitFor(() => {
       expect(exportSpy).toHaveBeenCalledTimes(1);
+    });
+
+    const exportButton = screen.getByRole("button", { name: "Exporting play set PDF" });
+    expect(exportButton).toBeDisabled();
+    expect(exportButton).toHaveAttribute("aria-busy", "true");
+    expect(exportButton).toHaveTextContent("Export");
+
+    finishExport();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Export play set PDF" })).toBeEnabled();
     });
   });
 
@@ -550,6 +595,7 @@ describe("AppShell", () => {
         activePlayId={null}
         activePlaySet={playSets[0]}
         activePlaySetId={playSets[0].id}
+        exporting={false}
         onCreatePlay={() => undefined}
         onCreatePlaySet={() => undefined}
         onDeletePlay={() => undefined}
@@ -618,6 +664,7 @@ describe("AppShell", () => {
         activePlayId={plays[0].id}
         activePlaySet={playSet}
         activePlaySetId={playSet.id}
+        exporting={false}
         onCreatePlay={() => undefined}
         onCreatePlaySet={() => undefined}
         onDeletePlay={() => undefined}

@@ -187,6 +187,7 @@ export function AppShell({ backend }: AppShellProps) {
   const [isCreatePlaySetOpen, setIsCreatePlaySetOpen] = useState(false);
   const [isPlaySetSettingsOpen, setIsPlaySetSettingsOpen] = useState(false);
   const [isExportingPlaySet, setIsExportingPlaySet] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [tool, setTool] = useState<ToolMode>("select");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
@@ -199,6 +200,7 @@ export function AppShell({ backend }: AppShellProps) {
   const playSetSaveTimers = useRef<Record<string, number>>({});
   const exportPreviewRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const boardHistoryRef = useRef<Record<string, BoardHistoryState>>({});
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const activeTextEditRef = useRef<{ playId: string | null; textId: string | null }>({
     playId: null,
     textId: null,
@@ -537,6 +539,32 @@ export function AppShell({ backend }: AppShellProps) {
       setIsPlaySetSettingsOpen(false);
     }
   }, [activePlaySet]);
+
+  useEffect(() => {
+    if (!isAccountMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(event.target as Node)) {
+        setIsAccountMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsAccountMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isAccountMenuOpen]);
 
   useEffect(() => {
     const validPlayIds = new Set(Object.values(playsBySetId).flat().map((play) => play.id));
@@ -1164,6 +1192,16 @@ export function AppShell({ backend }: AppShellProps) {
     }
   }
 
+  async function handleSignOut() {
+    setIsAccountMenuOpen(false);
+
+    try {
+      await backend.signOut();
+    } catch (error) {
+      setWorkspaceError(getErrorMessage(error));
+    }
+  }
+
   if (authState.status === "loading" || workspaceBusy) {
     return (
       <div className="flex min-h-screen items-center justify-center px-5 py-8 lg:px-8">
@@ -1183,24 +1221,68 @@ export function AppShell({ backend }: AppShellProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(216,116,49,0.22),_transparent_22%),radial-gradient(circle_at_top_right,_rgba(95,125,83,0.18),_transparent_26%),linear-gradient(180deg,_#f7f2e8_0%,_#ebe2cf_100%)] px-5 py-6 text-ink-950 lg:px-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(216,116,49,0.22),_transparent_22%),radial-gradient(circle_at_top_right,_rgba(95,125,83,0.18),_transparent_26%),linear-gradient(180deg,_#f7f2e8_0%,_#ebe2cf_100%)] px-5 pb-6 pt-6 text-ink-950 lg:px-8">
       <div className="mx-auto max-w-[1720px]">
-        <header className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+        <header className="mb-6 flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
             <p className="font-display text-sm font-bold uppercase tracking-[0.28em] text-ember-500">Flag Football Playmaker</p>
             <h1 className="font-display text-4xl font-black tracking-tight text-ink-950 sm:text-5xl">
               Build grouped wristband installs with cloud-saved Play Sets.
             </h1>
           </div>
-          <div className="flex flex-col items-start gap-2 text-sm text-ink-950/70 lg:items-end">
-            <p>{authState.user?.email}</p>
+          <div className="relative shrink-0" ref={accountMenuRef}>
             <button
-              className="rounded-full border border-ink-950/15 px-4 py-2 font-semibold text-ink-950 transition hover:border-ink-950/35"
-              onClick={() => void backend.signOut()}
+              aria-expanded={isAccountMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Open account menu"
+              className="glass-panel flex items-center gap-3 rounded-full border border-white/80 px-2 py-2 shadow-panel transition hover:border-ink-950/15"
+              data-testid="account-menu-trigger"
+              onClick={() => setIsAccountMenuOpen((current) => !current)}
               type="button"
             >
-              Sign out
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-ink-950 text-sm font-black uppercase text-white">
+                {(authState.user?.email?.charAt(0) ?? "A").toUpperCase()}
+              </span>
+              <span className="hidden text-sm font-semibold text-ink-950 sm:block">Account</span>
+              <svg
+                aria-hidden="true"
+                className={`h-4 w-4 text-ink-950/70 transition ${isAccountMenuOpen ? "rotate-180" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M6 9L12 15L18 9"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
+              </svg>
             </button>
+
+            {isAccountMenuOpen ? (
+              <div
+                aria-label="Account"
+                className="glass-panel absolute right-0 top-full z-20 mt-3 w-[min(18rem,calc(100vw-2.5rem))] rounded-[24px] border border-white/80 p-2 shadow-panel"
+                role="menu"
+              >
+                <div className="rounded-[18px] bg-white/70 px-4 py-3">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-[0.2em] text-ink-950/45">Signed in as</p>
+                  <p className="mt-2 break-all text-sm font-semibold text-ink-950">{authState.user?.email}</p>
+                </div>
+                <button
+                  className="mt-2 flex w-full items-center justify-between rounded-[18px] px-4 py-3 text-left text-sm font-semibold text-ink-950 transition hover:bg-white/70"
+                  onClick={() => void handleSignOut()}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>Sign out</span>
+                  <span aria-hidden="true" className="text-base leading-none text-ink-950/45">
+                    &rarr;
+                  </span>
+                </button>
+              </div>
+            ) : null}
           </div>
         </header>
 
@@ -1216,6 +1298,7 @@ export function AppShell({ backend }: AppShellProps) {
               activePlayId={activePlay?.id ?? null}
               activePlaySet={activePlaySet}
               activePlaySetId={activePlaySet?.id ?? null}
+              exporting={isExportingPlaySet}
               onCreatePlay={handleCreatePlay}
               onCreatePlaySet={() => setIsCreatePlaySetOpen(true)}
               onDeletePlay={handleDeletePlay}
