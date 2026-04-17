@@ -167,10 +167,11 @@ describe("AppShell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open play set settings" }));
     const modal = await screen.findByTestId("play-set-settings-modal");
-    const rowsInput = within(modal).getByDisplayValue("4");
-    const columnsInput = within(modal).getByDisplayValue("1");
-    const widthInput = within(modal).getByDisplayValue("8.5");
-    const heightInput = within(modal).getByDisplayValue("11");
+    fireEvent.click(within(modal).getByRole("button", { name: /Layout & Export/i }));
+    const rowsInput = within(modal).getByRole("spinbutton", { name: "Rows per page" });
+    const columnsInput = within(modal).getByRole("spinbutton", { name: "Columns per page" });
+    const widthInput = within(modal).getByRole("spinbutton", { name: "Full page width" });
+    const heightInput = within(modal).getByRole("spinbutton", { name: "Full page height" });
 
     fireEvent.change(rowsInput, { target: { value: "2" } });
     fireEvent.change(columnsInput, { target: { value: "3" } });
@@ -215,6 +216,7 @@ describe("AppShell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
     const modal = await screen.findByTestId("play-set-settings-modal");
+    fireEvent.click(within(modal).getByRole("button", { name: /Appearance/i }));
     const firstRosterPlayer = within(modal).getByTestId("play-set-roster-player-0");
 
     fireEvent.change(within(firstRosterPlayer).getByDisplayValue("X"), {
@@ -276,6 +278,7 @@ describe("AppShell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
     const modal = await screen.findByTestId("play-set-settings-modal");
+    fireEvent.click(within(modal).getByRole("button", { name: /Layout & Export/i }));
     const inputs = within(modal).getAllByRole("spinbutton");
     const saveButton = within(modal).getByRole("button", { name: "Save" });
 
@@ -301,6 +304,7 @@ describe("AppShell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
     const modal = await screen.findByTestId("play-set-settings-modal");
+    fireEvent.click(within(modal).getByRole("button", { name: /Layout & Export/i }));
     const unitSelect = within(modal).getByRole("combobox");
 
     expect(within(modal).getByDisplayValue("8.5")).toBeInTheDocument();
@@ -330,6 +334,7 @@ describe("AppShell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open play set settings" }));
     const modal = await screen.findByTestId("play-set-settings-modal");
+    fireEvent.click(within(modal).getByRole("button", { name: /Layout & Export/i }));
     const inputs = within(modal).getAllByRole("spinbutton");
 
     fireEvent.change(inputs[0], { target: { value: "2" } });

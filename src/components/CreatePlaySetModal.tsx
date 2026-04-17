@@ -10,13 +10,39 @@ interface CreatePlaySetModalProps {
   onSubmit: (payload: { name: string; settings: PartialPlaySetSettings }) => void;
 }
 
+function parsePositiveIntegerInput(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function parsePositiveNumberInput(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
 export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: CreatePlaySetModalProps) {
   const [name, setName] = useState(defaultName);
   const [playerCount, setPlayerCount] = useState<PlayerCount>(7);
-  const [rowsPerPage, setRowsPerPage] = useState(4);
-  const [columnsPerPage, setColumnsPerPage] = useState(1);
-  const [pageWidth, setPageWidth] = useState(8.5);
-  const [pageHeight, setPageHeight] = useState(11);
+  const [rowsPerPage, setRowsPerPage] = useState("4");
+  const [columnsPerPage, setColumnsPerPage] = useState("1");
+  const [pageWidth, setPageWidth] = useState("8.5");
+  const [pageHeight, setPageHeight] = useState("11");
   const [printUnit, setPrintUnit] = useState<Unit>("in");
 
   useEffect(() => {
@@ -27,10 +53,10 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
     setName(defaultName);
     const defaults = normalizePlaySetSettings();
     setPlayerCount(defaults.roster.playerCount);
-    setRowsPerPage(defaults.layout.rowsPerPage);
-    setColumnsPerPage(defaults.layout.columnsPerPage);
-    setPageWidth(defaults.print.width);
-    setPageHeight(defaults.print.height);
+    setRowsPerPage(String(defaults.layout.rowsPerPage));
+    setColumnsPerPage(String(defaults.layout.columnsPerPage));
+    setPageWidth(String(defaults.print.width));
+    setPageHeight(String(defaults.print.height));
     setPrintUnit(defaults.print.unit);
   }, [defaultName, open]);
 
@@ -53,24 +79,36 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
     return null;
   }
 
+  const defaultSettings = normalizePlaySetSettings();
+  const parsedRowsPerPage = parsePositiveIntegerInput(rowsPerPage);
+  const parsedColumnsPerPage = parsePositiveIntegerInput(columnsPerPage);
+  const parsedPageWidth = parsePositiveNumberInput(pageWidth);
+  const parsedPageHeight = parsePositiveNumberInput(pageHeight);
   const draftSettings = normalizePlaySetSettings({
     roster: {
       playerCount,
     },
     print: {
       presetId: null,
-      width: pageWidth,
-      height: pageHeight,
+      width: parsedPageWidth ?? defaultSettings.print.width,
+      height: parsedPageHeight ?? defaultSettings.print.height,
       unit: printUnit,
     },
     layout: {
-      rowsPerPage,
-      columnsPerPage,
-      playsPerPage: rowsPerPage * columnsPerPage,
+      rowsPerPage: parsedRowsPerPage ?? defaultSettings.layout.rowsPerPage,
+      columnsPerPage: parsedColumnsPerPage ?? defaultSettings.layout.columnsPerPage,
+      playsPerPage: (parsedRowsPerPage ?? defaultSettings.layout.rowsPerPage) * (parsedColumnsPerPage ?? defaultSettings.layout.columnsPerPage),
       cardAspectRatio: 1,
     },
   });
   const hasValidCardRatio = isLandscapeCard(draftSettings);
+  const canSubmit =
+    name.trim().length > 0 &&
+    parsedRowsPerPage !== null &&
+    parsedColumnsPerPage !== null &&
+    parsedPageWidth !== null &&
+    parsedPageHeight !== null &&
+    hasValidCardRatio;
 
   return (
     <div
@@ -104,6 +142,7 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
             <span className="mb-1 block text-sm font-semibold text-ink-950/70">Play Set name</span>
             <input
               className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+              aria-invalid={name.trim().length === 0}
               onChange={(event) => setName(event.target.value)}
               value={name}
             />
@@ -128,8 +167,9 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
                 <span className="mb-1 block text-sm font-semibold text-ink-950/70">Rows per page</span>
                 <input
                   className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                  aria-invalid={parsedRowsPerPage === null}
                   min={1}
-                  onChange={(event) => setRowsPerPage(Number(event.target.value) || rowsPerPage)}
+                  onChange={(event) => setRowsPerPage(event.target.value)}
                   step={1}
                   type="number"
                   value={rowsPerPage}
@@ -140,8 +180,9 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
                 <span className="mb-1 block text-sm font-semibold text-ink-950/70">Columns per page</span>
                 <input
                   className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                  aria-invalid={parsedColumnsPerPage === null}
                   min={1}
-                  onChange={(event) => setColumnsPerPage(Number(event.target.value) || columnsPerPage)}
+                  onChange={(event) => setColumnsPerPage(event.target.value)}
                   step={1}
                   type="number"
                   value={columnsPerPage}
@@ -155,8 +196,9 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
               <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page width</span>
               <input
                 className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                aria-invalid={parsedPageWidth === null}
                 min={1}
-                onChange={(event) => setPageWidth(Number(event.target.value) || pageWidth)}
+                onChange={(event) => setPageWidth(event.target.value)}
                 step="0.1"
                 type="number"
                 value={pageWidth}
@@ -167,8 +209,9 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
               <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page height</span>
               <input
                 className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                aria-invalid={parsedPageHeight === null}
                 min={1}
-                onChange={(event) => setPageHeight(Number(event.target.value) || pageHeight)}
+                onChange={(event) => setPageHeight(event.target.value)}
                 step="0.1"
                 type="number"
                 value={pageHeight}
@@ -181,8 +224,14 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
                 className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                 onChange={(event) => {
                   const nextUnit = event.target.value as Unit;
-                  setPageWidth((current) => convertPrintMeasurement(current, printUnit, nextUnit));
-                  setPageHeight((current) => convertPrintMeasurement(current, printUnit, nextUnit));
+                  setPageWidth((current) => {
+                    const parsed = parsePositiveNumberInput(current);
+                    return parsed === null ? current : String(convertPrintMeasurement(parsed, printUnit, nextUnit));
+                  });
+                  setPageHeight((current) => {
+                    const parsed = parsePositiveNumberInput(current);
+                    return parsed === null ? current : String(convertPrintMeasurement(parsed, printUnit, nextUnit));
+                  });
                   setPrintUnit(nextUnit);
                 }}
                 value={printUnit}
@@ -205,6 +254,9 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
         </div>
 
         <div className="mt-6 flex justify-end gap-3">
+          {!canSubmit ? (
+            <p className="mr-auto self-center text-sm font-semibold text-red-700">Fill in every required field to continue.</p>
+          ) : null}
           <button
             className="rounded-full border border-ink-950/15 px-4 py-2 text-sm font-semibold text-ink-950 transition hover:border-ink-950/35"
             onClick={onClose}
@@ -214,11 +266,27 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
           </button>
           <button
             className="rounded-full bg-ember-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-ember-500/90 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!hasValidCardRatio}
+            disabled={!canSubmit}
             onClick={() =>
               onSubmit({
-                name: name.trim() || defaultName,
-                settings: draftSettings,
+                name: name.trim(),
+                settings: normalizePlaySetSettings({
+                  roster: {
+                    playerCount,
+                  },
+                  print: {
+                    presetId: null,
+                    width: parsedPageWidth!,
+                    height: parsedPageHeight!,
+                    unit: printUnit,
+                  },
+                  layout: {
+                    rowsPerPage: parsedRowsPerPage!,
+                    columnsPerPage: parsedColumnsPerPage!,
+                    playsPerPage: parsedRowsPerPage! * parsedColumnsPerPage!,
+                    cardAspectRatio: 1,
+                  },
+                }),
               })
             }
             type="button"

@@ -12,6 +12,32 @@ interface PlaySetSettingsModalProps {
   onExportPlaySet: () => void;
 }
 
+function parsePositiveIntegerInput(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function parsePositiveNumberInput(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
 export function PlaySetSettingsModal({
   playSet,
   open,
@@ -40,6 +66,11 @@ export function PlaySetSettingsModal({
   const [draftName, setDraftName] = useState("");
   const [draftSettings, setDraftSettings] = useState(() => normalizePlaySetSettings());
   const [activeSection, setActiveSection] = useState<(typeof sections)[number]["id"]>("general");
+  const [draftRowsPerPage, setDraftRowsPerPage] = useState("");
+  const [draftColumnsPerPage, setDraftColumnsPerPage] = useState("");
+  const [draftPrintWidth, setDraftPrintWidth] = useState("");
+  const [draftPrintHeight, setDraftPrintHeight] = useState("");
+  const [draftPlayerLabels, setDraftPlayerLabels] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) {
@@ -65,6 +96,11 @@ export function PlaySetSettingsModal({
 
     setDraftName(playSet.name);
     setDraftSettings(normalizePlaySetSettings(playSet.settings));
+    setDraftRowsPerPage(String(playSet.settings.layout.rowsPerPage));
+    setDraftColumnsPerPage(String(playSet.settings.layout.columnsPerPage));
+    setDraftPrintWidth(String(playSet.settings.print.width));
+    setDraftPrintHeight(String(playSet.settings.print.height));
+    setDraftPlayerLabels(playSet.settings.roster.players.map((player) => player.label));
     setActiveSection("general");
   }, [open, playSet]);
 
@@ -72,11 +108,37 @@ export function PlaySetSettingsModal({
     return null;
   }
 
-  const hasValidCardRatio = isLandscapeCard(draftSettings);
-
   function updateDraftSettings(updater: (current: PlaySet["settings"]) => PlaySet["settings"]) {
     setDraftSettings((current) => normalizePlaySetSettings(updater(current)));
   }
+
+  const parsedRowsPerPage = parsePositiveIntegerInput(draftRowsPerPage);
+  const parsedColumnsPerPage = parsePositiveIntegerInput(draftColumnsPerPage);
+  const parsedPrintWidth = parsePositiveNumberInput(draftPrintWidth);
+  const parsedPrintHeight = parsePositiveNumberInput(draftPrintHeight);
+  const hasEmptyPlayerLabel = draftPlayerLabels.some((label) => label.trim().length === 0);
+  const canSaveRequiredFields =
+    draftName.trim().length > 0 &&
+    parsedRowsPerPage !== null &&
+    parsedColumnsPerPage !== null &&
+    parsedPrintWidth !== null &&
+    parsedPrintHeight !== null &&
+    !hasEmptyPlayerLabel;
+  const previewSettings = normalizePlaySetSettings({
+    ...draftSettings,
+    print: {
+      ...draftSettings.print,
+      width: parsedPrintWidth ?? draftSettings.print.width,
+      height: parsedPrintHeight ?? draftSettings.print.height,
+    },
+    layout: {
+      ...draftSettings.layout,
+      rowsPerPage: parsedRowsPerPage ?? draftSettings.layout.rowsPerPage,
+      columnsPerPage: parsedColumnsPerPage ?? draftSettings.layout.columnsPerPage,
+    },
+  });
+  const hasValidCardRatio = isLandscapeCard(previewSettings);
+  const canSave = canSaveRequiredFields && hasValidCardRatio;
 
   return (
     <div
@@ -159,12 +221,13 @@ export function PlaySetSettingsModal({
               <div className="mt-3 space-y-3">
                 <label className="block">
                   <span className="mb-1 block text-sm font-semibold text-ink-950/70">Set name</span>
-                  <input
-                    className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
-                    onChange={(event) => setDraftName(event.target.value)}
-                    value={draftName}
-                  />
-                </label>
+                    <input
+                      className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      aria-invalid={draftName.trim().length === 0}
+                      onChange={(event) => setDraftName(event.target.value)}
+                      value={draftName}
+                    />
+                  </label>
 
                 <label className="block">
                   <span className="mb-1 block text-sm font-semibold text-ink-950/70">Player count</span>
@@ -248,38 +311,24 @@ export function PlaySetSettingsModal({
                     <span className="mb-1 block text-sm font-semibold text-ink-950/70">Rows per page</span>
                     <input
                       className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      aria-invalid={parsedRowsPerPage === null}
                       min={1}
-                      onChange={(event) =>
-                        updateDraftSettings((current) => ({
-                          ...current,
-                          layout: {
-                            ...current.layout,
-                            rowsPerPage: Number(event.target.value) || current.layout.rowsPerPage,
-                          },
-                        }))
-                      }
+                      onChange={(event) => setDraftRowsPerPage(event.target.value)}
                       step={1}
                       type="number"
-                      value={draftSettings.layout.rowsPerPage}
+                      value={draftRowsPerPage}
                     />
                   </label>
                   <label className="block">
                     <span className="mb-1 block text-sm font-semibold text-ink-950/70">Columns per page</span>
                     <input
                       className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      aria-invalid={parsedColumnsPerPage === null}
                       min={1}
-                      onChange={(event) =>
-                        updateDraftSettings((current) => ({
-                          ...current,
-                          layout: {
-                            ...current.layout,
-                            columnsPerPage: Number(event.target.value) || current.layout.columnsPerPage,
-                          },
-                        }))
-                      }
+                      onChange={(event) => setDraftColumnsPerPage(event.target.value)}
                       step={1}
                       type="number"
-                      value={draftSettings.layout.columnsPerPage}
+                      value={draftColumnsPerPage}
                     />
                   </label>
                 </div>
@@ -289,61 +338,53 @@ export function PlaySetSettingsModal({
                     <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page width</span>
                     <input
                       className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      aria-invalid={parsedPrintWidth === null}
                       min={0.5}
-                      onChange={(event) =>
-                        updateDraftSettings((current) => ({
-                          ...current,
-                          print: {
-                            ...current.print,
-                            presetId: null,
-                            width: Number(event.target.value) || current.print.width,
-                          },
-                        }))
-                      }
+                      onChange={(event) => setDraftPrintWidth(event.target.value)}
                       step="0.05"
                       type="number"
-                      value={draftSettings.print.width}
+                      value={draftPrintWidth}
                     />
                   </label>
                   <label className="block">
                     <span className="mb-1 block text-sm font-semibold text-ink-950/70">Full page height</span>
                     <input
                       className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      aria-invalid={parsedPrintHeight === null}
                       min={0.5}
-                      onChange={(event) =>
-                        updateDraftSettings((current) => ({
-                          ...current,
-                          print: {
-                            ...current.print,
-                            presetId: null,
-                            height: Number(event.target.value) || current.print.height,
-                          },
-                        }))
-                      }
+                      onChange={(event) => setDraftPrintHeight(event.target.value)}
                       step="0.05"
                       type="number"
-                      value={draftSettings.print.height}
+                      value={draftPrintHeight}
                     />
                   </label>
                   <label className="block">
                     <span className="mb-1 block text-sm font-semibold text-ink-950/70">Unit</span>
                     <select
                       className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
-                      onChange={(event) =>
-                        updateDraftSettings((current) => {
-                          const nextUnit = event.target.value as PlaySet["settings"]["print"]["unit"];
-                          return {
-                            ...current,
-                            print: {
-                              ...current.print,
-                              presetId: null,
-                              width: convertPrintMeasurement(current.print.width, current.print.unit, nextUnit),
-                              height: convertPrintMeasurement(current.print.height, current.print.unit, nextUnit),
-                              unit: nextUnit,
-                            },
-                          };
-                        })
-                      }
+                      onChange={(event) => {
+                        const nextUnit = event.target.value as PlaySet["settings"]["print"]["unit"];
+                        const previousUnit = draftSettings.print.unit;
+
+                        setDraftPrintWidth((current) => {
+                          const parsed = parsePositiveNumberInput(current);
+                          return parsed === null ? current : String(convertPrintMeasurement(parsed, previousUnit, nextUnit));
+                        });
+                        setDraftPrintHeight((current) => {
+                          const parsed = parsePositiveNumberInput(current);
+                          return parsed === null ? current : String(convertPrintMeasurement(parsed, previousUnit, nextUnit));
+                        });
+                        updateDraftSettings((current) => ({
+                          ...current,
+                          print: {
+                            ...current.print,
+                            presetId: null,
+                            width: convertPrintMeasurement(current.print.width, current.print.unit, nextUnit),
+                            height: convertPrintMeasurement(current.print.height, current.print.unit, nextUnit),
+                            unit: nextUnit,
+                          },
+                        }));
+                      }}
                       value={draftSettings.print.unit}
                     >
                       <option value="in">Inches</option>
@@ -354,7 +395,7 @@ export function PlaySetSettingsModal({
 
                 <div>
                   <p className="mb-2 text-sm font-semibold text-ink-950/70">Page preview</p>
-                  <PageLayoutPreview settings={draftSettings} />
+                  <PageLayoutPreview settings={previewSettings} />
                   {!hasValidCardRatio ? (
                     <p className="mt-2 text-sm font-semibold text-red-700">
                       Printable cards must be square or wider than tall. Adjust the page size or row/column count.
@@ -407,21 +448,16 @@ export function PlaySetSettingsModal({
                           </span>
                           <input
                             className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                            aria-invalid={draftPlayerLabels[index]?.trim().length === 0}
                             maxLength={4}
                             onChange={(event) =>
-                              updateDraftSettings((current) => ({
-                                ...current,
-                                roster: {
-                                  ...current.roster,
-                                  players: current.roster.players.map((rosterPlayer, rosterIndex) =>
-                                    rosterIndex === index
-                                      ? { ...rosterPlayer, label: event.target.value.toUpperCase() }
-                                      : rosterPlayer,
-                                  ),
-                                },
-                              }))
+                              setDraftPlayerLabels((current) =>
+                                current.map((label, rosterIndex) =>
+                                  rosterIndex === index ? event.target.value.toUpperCase() : label,
+                                ),
+                              )
                             }
-                            value={player.label}
+                            value={draftPlayerLabels[index] ?? player.label}
                           />
                         </label>
 
@@ -458,6 +494,9 @@ export function PlaySetSettingsModal({
         </div>
 
         <div className="mt-6 flex justify-end gap-3">
+          {!canSaveRequiredFields ? (
+            <p className="mr-auto self-center text-sm font-semibold text-red-700">Fill in every required field to save.</p>
+          ) : null}
           <button
             className="rounded-full border border-ink-950/15 px-4 py-2 text-sm font-semibold text-ink-950 transition hover:border-ink-950/35"
             onClick={onClose}
@@ -467,8 +506,36 @@ export function PlaySetSettingsModal({
           </button>
           <button
             className="rounded-full bg-ember-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-ember-500/90 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!hasValidCardRatio}
-            onClick={() => onSave({ name: draftName.trim() || playSet.name, settings: draftSettings })}
+            disabled={!canSave}
+            onClick={() => {
+              if (!canSaveRequiredFields) {
+                return;
+              }
+
+              onSave({
+                name: draftName.trim(),
+                settings: normalizePlaySetSettings({
+                  ...draftSettings,
+                  roster: {
+                    ...draftSettings.roster,
+                    players: draftSettings.roster.players.map((player, index) => ({
+                      ...player,
+                      label: draftPlayerLabels[index].trim().toUpperCase(),
+                    })),
+                  },
+                  print: {
+                    ...draftSettings.print,
+                    width: parsedPrintWidth!,
+                    height: parsedPrintHeight!,
+                  },
+                  layout: {
+                    ...draftSettings.layout,
+                    rowsPerPage: parsedRowsPerPage!,
+                    columnsPerPage: parsedColumnsPerPage!,
+                  },
+                }),
+              });
+            }}
             type="button"
           >
             Save
