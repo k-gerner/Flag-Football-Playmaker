@@ -150,6 +150,26 @@ describe("AppShell", () => {
     expect(screen.getByDisplayValue("Play Set 1")).toBeInTheDocument();
   });
 
+  it("exports a play set from the sidebar button", async () => {
+    const playSet = createPlaySet("Play Set 1");
+    const exportSpy = vi.spyOn(await import("../lib/pdf"), "exportPlaySetToPdf").mockResolvedValue(undefined);
+
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [playSet],
+          initialPlays: [],
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Export play set PDF" }));
+
+    await waitFor(() => {
+      expect(exportSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("keeps play set changes local until save is clicked", async () => {
     const playSet = createPlaySet("Play Set 1");
     render(
@@ -471,6 +491,7 @@ describe("AppShell", () => {
         onDeletePlaySet={() => undefined}
         onDuplicatePlay={() => undefined}
         onDuplicatePlaySet={() => undefined}
+        onExportPlaySet={() => undefined}
         onMovePlay={() => undefined}
         onOpenPlaySetSettings={() => undefined}
         onSelectPlay={() => undefined}

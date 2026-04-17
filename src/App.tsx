@@ -1230,6 +1230,7 @@ export function AppShell({ backend }: AppShellProps) {
               onDeletePlaySet={handleDeletePlaySet}
               onDuplicatePlay={handleDuplicatePlay}
               onDuplicatePlaySet={handleDuplicatePlaySet}
+              onExportPlaySet={handleExportPlaySet}
               onMovePlay={handleMovePlay}
               onOpenPlaySetSettings={() => setIsPlaySetSettingsOpen(true)}
               onSelectPlay={(playId) => {

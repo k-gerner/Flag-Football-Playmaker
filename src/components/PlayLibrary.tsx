@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { IoSettings } from "react-icons/io5";
+import { IoDownloadOutline, IoSettings } from "react-icons/io5";
 import type { PlayDocument, PlaySet } from "../lib/types";
 
 interface PlayLibraryProps {
@@ -12,6 +12,7 @@ interface PlayLibraryProps {
   onSelectPlaySet: (playSetId: string) => void;
   onDuplicatePlaySet: (playSetId: string) => void;
   onDeletePlaySet: (playSetId: string) => void;
+  onExportPlaySet: () => void;
   onOpenPlaySetSettings: () => void;
   onCreatePlay: () => void;
   onSelectPlay: (playId: string) => void;
@@ -89,6 +90,7 @@ export function PlayLibrary({
   onSelectPlaySet,
   onDuplicatePlaySet,
   onDeletePlaySet,
+  onExportPlaySet,
   onOpenPlaySetSettings,
   onCreatePlay,
   onSelectPlay,
@@ -162,21 +164,33 @@ export function PlayLibrary({
     <aside className="glass-panel flex h-full min-w-0 flex-col overflow-hidden rounded-[28px] border border-white/70 p-4 shadow-panel">
       <div className="mb-4">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="font-display text-lg font-bold text-ink-950">Play Sets</p>
-            <p className="text-sm text-ink-950/65">Separate wristband groupings by opponent, team, or install.</p>
+          <p className="font-display text-lg font-bold text-ink-950">Play Sets</p>
+          <div className="flex items-center gap-2">
+            <button
+              aria-label="Export play set PDF"
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-ink-950/15 bg-white/75 px-3 text-sm font-semibold text-ink-950 transition hover:border-ember-500/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={!activePlaySet}
+              onClick={onExportPlaySet}
+              type="button"
+            >
+              <IoDownloadOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span>Export</span>
+            </button>
+            <button
+              aria-label="Open play set settings"
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-ink-950/15 bg-white/75 px-3 text-sm font-semibold text-ink-950 transition hover:border-ember-500/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={!activePlaySet}
+              onClick={onOpenPlaySetSettings}
+              type="button"
+            >
+              <IoSettings aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span>Settings</span>
+            </button>
           </div>
-          <button
-            aria-label="Open play set settings"
-            className="inline-flex h-10 items-center gap-2 rounded-full border border-ink-950/15 bg-white/75 px-3 text-sm font-semibold text-ink-950 transition hover:border-ember-500/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={!activePlaySet}
-            onClick={onOpenPlaySetSettings}
-            type="button"
-          >
-            <IoSettings aria-hidden="true" className="h-4 w-4 shrink-0" />
-            <span>Settings</span>
-          </button>
         </div>
+        <p className="mt-2 max-w-[22rem] text-sm text-ink-950/65">
+          Separate wristband groupings by opponent, team, or install.
+        </p>
       </div>
 
       <button
