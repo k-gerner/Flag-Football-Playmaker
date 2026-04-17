@@ -361,7 +361,7 @@ export function PlaySetSettingsModal({
                   <label className="block">
                     <span className="mb-1 block text-sm font-semibold text-ink-950/70">Unit</span>
                     <select
-                      className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      className="select-field w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                       onChange={(event) => {
                         const nextUnit = event.target.value as PlaySet["settings"]["print"]["unit"];
                         const previousUnit = draftSettings.print.unit;
@@ -429,7 +429,7 @@ export function PlaySetSettingsModal({
                   <label className="block">
                     <span className="mb-1 block text-sm font-semibold text-ink-950/70">Player size</span>
                     <select
-                      className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      className="select-field w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                       onChange={(event) =>
                         updateDraftSettings((current) => ({
                           ...current,
@@ -450,7 +450,7 @@ export function PlaySetSettingsModal({
                   <label className="block">
                     <span className="mb-1 block text-sm font-semibold text-ink-950/70">Line Thickness</span>
                     <select
-                      className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                      className="select-field w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                       onChange={(event) =>
                         updateDraftSettings((current) => ({
                           ...current,

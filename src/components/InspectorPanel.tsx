@@ -187,7 +187,7 @@ export function InspectorPanel({
                 <p className="mb-2 text-sm font-semibold text-ink-950/70">Copy play into another set</p>
                 <div className="flex gap-2">
                   <select
-                    className="flex-1 rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                    className="select-field flex-1 rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                     onChange={(event) => onCopyTargetPlaySetChange(event.target.value)}
                     value={copyTargetPlaySetId}
                   >

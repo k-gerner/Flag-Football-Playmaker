@@ -152,7 +152,7 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-ink-950/70">Number of players</span>
               <select
-                className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                className="select-field w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                 onChange={(event) => setPlayerCount(Number(event.target.value) as PlayerCount)}
                 value={playerCount}
               >
@@ -221,7 +221,7 @@ export function CreatePlaySetModal({ open, defaultName, onClose, onSubmit }: Cre
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-ink-950/70">Unit</span>
               <select
-                className="w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
+                className="select-field w-full rounded-2xl border border-black/10 bg-white/80 px-3 py-2 outline-none transition focus:border-ember-500"
                 onChange={(event) => {
                   const nextUnit = event.target.value as Unit;
                   setPageWidth((current) => {
