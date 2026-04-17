@@ -106,6 +106,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
   const routeStrokeWidth = getRouteStrokeWidth(playSetSettings);
   const selectedRouteStrokeWidth = Number((routeStrokeWidth + 0.5).toFixed(2));
   const draftRouteStrokeWidth = Number((routeStrokeWidth + 0.1).toFixed(2));
+  const boardBackgroundColor = playSetSettings.field.backgroundColor || theme.surface;
   const routeMarkerSize =
     playSetSettings.field.lineThickness === "thick"
       ? 4.1
@@ -267,7 +268,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
   return (
     <div
       className={frameClassName}
-      style={{ backgroundColor: playSetSettings.field.backgroundColor }}
+      style={{ backgroundColor: boardBackgroundColor }}
     >
       <div className="absolute inset-0 opacity-30" style={{ background: theme.cardBackground }} />
       <div className="absolute inset-x-0 top-0 h-28" style={{ background: theme.overlay }} />
@@ -317,7 +318,7 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
 
         <rect
           data-testid={enableTestIds ? "field-surface" : undefined}
-          fill={theme.surface}
+          fill={boardBackgroundColor}
           height={layout.height}
           width={layout.width}
           x="0"

@@ -940,11 +940,23 @@ describe("AppShell", () => {
     expect(within(screen.getByTestId(/text-annotation-/)).getByText("Screen")).toBeInTheDocument();
   });
 
-  it("renders the default field surface without a field-style picker", async () => {
+  it("renders the saved card background color on the visible field surface", async () => {
     render(<AppShell backend={createSeededMemoryBackend()} />);
 
-    expect(await screen.findByTestId("field-surface")).toHaveAttribute("fill", "#fffdf7");
+    expect(await screen.findByTestId("field-surface")).toHaveAttribute("fill", "#fff8ee");
     fireEvent.click(screen.getByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
+    fireEvent.click(within(modal).getByRole("button", { name: /Appearance/i }));
+    fireEvent.change(within(modal).getByLabelText("Card background color"), {
+      target: { value: "#9dd9f3" },
+    });
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("play-set-settings-modal")).not.toBeInTheDocument();
+    });
+
+    expect(await screen.findByTestId("field-surface")).toHaveAttribute("fill", "#9dd9f3");
     expect(screen.queryByText("Field style")).not.toBeInTheDocument();
   });
 });
