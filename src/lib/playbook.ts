@@ -215,6 +215,7 @@ export const DEFAULT_PLAY_SET_SETTINGS: PlaySetSettings = {
   field: {
     backgroundColor: "#fff8ee",
     matchRouteColorToPlayer: false,
+    showPlayNumberBanner: false,
   },
   print: {
     presetId: null,
@@ -354,6 +355,10 @@ export function normalizePlaySetSettings(input?: PartialPlaySetSettings | null):
         typeof input?.field?.matchRouteColorToPlayer === "boolean"
           ? input.field.matchRouteColorToPlayer
           : DEFAULT_PLAY_SET_SETTINGS.field.matchRouteColorToPlayer,
+      showPlayNumberBanner:
+        typeof input?.field?.showPlayNumberBanner === "boolean"
+          ? input.field.showPlayNumberBanner
+          : DEFAULT_PLAY_SET_SETTINGS.field.showPlayNumberBanner,
     },
     print: {
       ...print,

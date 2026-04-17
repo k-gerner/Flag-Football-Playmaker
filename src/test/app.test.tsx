@@ -241,6 +241,28 @@ describe("AppShell", () => {
     expect(thirdPlayPlayer.querySelector("circle")).toHaveAttribute("fill", "#123456");
   });
 
+  it("shows a play number banner on the board when enabled in play set settings", async () => {
+    render(<AppShell backend={createSeededMemoryBackend()} />);
+
+    expect(screen.queryByTestId("play-number-banner")).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open play set settings" }));
+    const modal = await screen.findByTestId("play-set-settings-modal");
+    fireEvent.click(within(modal).getByRole("switch", { name: "Toggle show play number on play" }));
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("play-set-settings-modal")).not.toBeInTheDocument();
+    });
+
+    const banner = await screen.findByTestId("play-number-banner");
+    const bannerRect = banner.querySelector("rect");
+    const bannerText = within(banner).getByText("1");
+
+    expect(bannerRect).toHaveAttribute("fill", "#000000");
+    expect(bannerText).toHaveAttribute("fill", "#ffffff");
+  });
+
   it("blocks saving a portrait card layout in play set settings", async () => {
     const playSet = createPlaySet("Play Set 1");
     render(

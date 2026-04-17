@@ -168,6 +168,38 @@ export function PlaySetSettingsModal({
                   />
                 </button>
               </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 bg-white/75 px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-semibold text-ink-950/75">Show play number on play</p>
+                  <p className="text-xs text-ink-950/55">Adds a black banner across the top with the play number.</p>
+                </div>
+                <button
+                  aria-checked={draftSettings.field.showPlayNumberBanner}
+                  aria-label="Toggle show play number on play"
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center overflow-hidden rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-ember-500/40 ${
+                    draftSettings.field.showPlayNumberBanner ? "bg-ember-500" : "bg-ink-950/15"
+                  }`}
+                  onClick={() =>
+                    updateDraftSettings((current) => ({
+                      ...current,
+                      field: {
+                        ...current.field,
+                        showPlayNumberBanner: !current.field.showPlayNumberBanner,
+                      },
+                    }))
+                  }
+                  role="switch"
+                  type="button"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`block h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(15,23,32,0.16)] transition-transform ${
+                      draftSettings.field.showPlayNumberBanner ? "translate-x-[19px]" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           </section>
 

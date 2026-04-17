@@ -65,6 +65,7 @@ export interface PlaySetSettings {
   field: {
     backgroundColor: string;
     matchRouteColorToPlayer: boolean;
+    showPlayNumberBanner: boolean;
   };
   print: PrintSettings;
   layout: {

@@ -49,6 +49,8 @@ type DragState =
 const markerId = "play-arrow";
 const motionMarkerId = "motion-arrow";
 const DEFAULT_ROUTE_COLOR = "#000000";
+const PLAY_NUMBER_BANNER_HEIGHT = 11;
+const PLAY_NUMBER_BANNER_CLEARANCE = 1;
 
 function getMidpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -104,6 +106,9 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
     frameVariant === "export"
       ? "relative overflow-hidden border border-black"
       : "relative overflow-hidden rounded-[36px] border border-white/20 shadow-panel";
+  const minimumYardMarkerY = playSetSettings.field.showPlayNumberBanner
+    ? PLAY_NUMBER_BANNER_HEIGHT + PLAY_NUMBER_BANNER_CLEARANCE
+    : Number.NEGATIVE_INFINITY;
 
   const updateDragState = (nextDragState: DragState) => {
     dragStateRef.current = nextDragState;
@@ -303,6 +308,24 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
           y="0"
         />
 
+        {playSetSettings.field.showPlayNumberBanner ? (
+          <g data-testid={enableTestIds ? "play-number-banner" : undefined}>
+            <rect fill="#000000" height={PLAY_NUMBER_BANNER_HEIGHT} width={layout.width} x="0" y="0" />
+            <text
+              data-testid={enableTestIds ? "play-number-banner-text" : undefined}
+              dominantBaseline="middle"
+              fill="#ffffff"
+              fontSize="5.5"
+              fontWeight="800"
+              textAnchor="middle"
+              x={layout.width / 2}
+              y={PLAY_NUMBER_BANNER_HEIGHT / 2 + 0.35}
+            >
+              {play.playNumber}
+            </text>
+          </g>
+        ) : null}
+
         <g>
           <line
             opacity={0.95}
@@ -316,7 +339,10 @@ export const Playboard = forwardRef<SVGSVGElement, PlayboardProps>(function Play
         </g>
 
         {play.displaySettings.yardMarkers.map((yards) => {
-          const y = layout.lineOfScrimmageY - (yards / 15) * layout.yardsInFront;
+          const y = Math.max(
+            layout.lineOfScrimmageY - (yards / 15) * layout.yardsInFront,
+            minimumYardMarkerY,
+          );
           return (
             <g key={yards}>
               <line
