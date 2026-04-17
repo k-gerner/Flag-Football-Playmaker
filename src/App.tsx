@@ -1236,19 +1236,7 @@ export function AppShell({ backend }: AppShellProps) {
           </div>
 
           <main className="flex min-w-0 flex-col gap-5">
-            {activePlay ? (
-              <Toolbar
-                draftPath={draftPath}
-                onToolChange={(nextTool) => {
-                  setTool(nextTool);
-                  setHandoffSourceId(null);
-                  if (nextTool !== "route" && nextTool !== "motion") {
-                    setDraftPath(null);
-                  }
-                }}
-                tool={tool}
-              />
-            ) : (
+            {!activePlay ? (
               <section className="glass-panel rounded-[28px] border border-white/70 px-5 py-4 shadow-panel">
                 <p className="text-sm font-semibold text-ink-950/80">
                   {activePlaySet
@@ -1258,7 +1246,7 @@ export function AppShell({ backend }: AppShellProps) {
                       : "Create a new Play Set before you build your first play."}
                 </p>
               </section>
-            )}
+            ) : null}
 
             {activePlaySet && activePlay ? (
               <section className="relative grid gap-4 rounded-[38px] bg-ink-950/80 p-4 shadow-panel sm:p-5">
@@ -1382,6 +1370,20 @@ export function AppShell({ backend }: AppShellProps) {
                 </div>
               </section>
             )}
+
+            {activePlay ? (
+              <Toolbar
+                draftPath={draftPath}
+                onToolChange={(nextTool) => {
+                  setTool(nextTool);
+                  setHandoffSourceId(null);
+                  if (nextTool !== "route" && nextTool !== "motion") {
+                    setDraftPath(null);
+                  }
+                }}
+                tool={tool}
+              />
+            ) : null}
           </main>
 
           <div className="min-h-[720px] xl:sticky xl:top-6">
