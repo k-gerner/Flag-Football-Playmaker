@@ -133,6 +133,55 @@ describe("AppShell", () => {
     expect(screen.getByTestId("play-set-picker-trigger")).toHaveTextContent("Play Set 1");
   });
 
+  it("shows the selected play in the collapsed picker and expands into a horizontal rail", async () => {
+    const playSet = createPlaySet("Play Set 1");
+    const play1 = {
+      ...createPlayDocument({
+        playSetId: playSet.id,
+        playNumber: 1,
+        name: "Mesh",
+        settings: playSet.settings,
+      }),
+      createdAt: "2026-04-12T15:00:00.000Z",
+      updatedAt: "2026-04-12T15:00:00.000Z",
+    };
+    const play2 = {
+      ...createPlayDocument({
+        playSetId: playSet.id,
+        playNumber: 2,
+        name: "Flood",
+        settings: playSet.settings,
+      }),
+      createdAt: "2026-04-12T16:00:00.000Z",
+      updatedAt: "2026-04-12T16:00:00.000Z",
+    };
+
+    render(
+      <AppShell
+        backend={createMemoryBackend({
+          initialPlaySets: [playSet],
+          initialPlays: [play1, play2],
+        })}
+      />,
+    );
+
+    const trigger = await screen.findByTestId("play-picker-trigger");
+    expect(trigger).toHaveTextContent("Mesh");
+    expect(screen.queryByTestId("play-picker-rail")).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+
+    const rail = await screen.findByTestId("play-picker-rail");
+    const newCard = within(rail).getByTestId("new-play-card");
+    const existingCard = within(rail).getByTestId(`play-card-${play1.id}`);
+
+    expect(newCard.compareDocumentPosition(existingCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(rail).getByRole("button", { name: /Flood/ }));
+
+    expect(screen.queryByTestId("play-picker-rail")).not.toBeInTheDocument();
+    expect(screen.getByTestId("play-picker-trigger")).toHaveTextContent("Flood");
+  });
+
   it("opens play set settings in a modal from the gear button", async () => {
     const playSet = createPlaySet("Play Set 1");
     render(
@@ -254,11 +303,14 @@ describe("AppShell", () => {
     const firstPlayPlayer = await screen.findByTestId("player-FL");
     expect(firstPlayPlayer.querySelector("circle")).toHaveAttribute("fill", "#123456");
 
-    fireEvent.click(screen.getByRole("button", { name: /Counter/ }));
+    fireEvent.click(screen.getByTestId("play-picker-trigger"));
+    const playRail = await screen.findByTestId("play-picker-rail");
+    fireEvent.click(within(playRail).getByRole("button", { name: /Counter/ }));
     const secondPlayPlayer = await screen.findByTestId("player-FL");
     expect(secondPlayPlayer.querySelector("circle")).toHaveAttribute("fill", "#123456");
 
-    fireEvent.click(screen.getByRole("button", { name: "New Play" }));
+    fireEvent.click(screen.getByTestId("play-picker-trigger"));
+    fireEvent.click(within(await screen.findByTestId("play-picker-rail")).getByRole("button", { name: "New Play" }));
     const thirdPlayPlayer = await screen.findByTestId("player-FL");
     expect(thirdPlayPlayer.querySelector("circle")).toHaveAttribute("fill", "#123456");
   });
@@ -531,6 +583,74 @@ describe("AppShell", () => {
     });
 
     fireEvent.click(await screen.findByRole("button", { name: "Scroll play sets right" }));
+
+    expect(scrollBy).toHaveBeenCalledWith({ behavior: "smooth", left: 240 });
+  });
+
+  it("shows overlay arrows for an overflowing play rail and scrolls by one tile", async () => {
+    const playSet = createPlaySet("Play Set 1");
+    const plays = ["Mesh", "Flood", "Corner"].map((name, index) => ({
+      ...createPlayDocument({
+        playSetId: playSet.id,
+        playNumber: index + 1,
+        name,
+        settings: playSet.settings,
+      }),
+      createdAt: `2026-04-12T1${index}:00:00.000Z`,
+      updatedAt: `2026-04-12T1${index}:00:00.000Z`,
+    }));
+
+    render(
+      <PlayLibrary
+        activePlayId={plays[0].id}
+        activePlaySet={playSet}
+        activePlaySetId={playSet.id}
+        onCreatePlay={() => undefined}
+        onCreatePlaySet={() => undefined}
+        onDeletePlay={() => undefined}
+        onDeletePlaySet={() => undefined}
+        onDuplicatePlay={() => undefined}
+        onDuplicatePlaySet={() => undefined}
+        onExportPlaySet={() => undefined}
+        onMovePlay={() => undefined}
+        onOpenPlaySetSettings={() => undefined}
+        onSelectPlay={() => undefined}
+        onSelectPlaySet={() => undefined}
+        playSets={[playSet]}
+        plays={plays}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("play-picker-trigger"));
+
+    const rail = await screen.findByTestId("play-picker-rail");
+    const firstPlayCard = screen.getByTestId(`play-card-${plays[0].id}`);
+    const scrollBy = vi.fn();
+
+    Object.defineProperty(rail, "clientWidth", { configurable: true, value: 320 });
+    Object.defineProperty(rail, "scrollWidth", { configurable: true, value: 960 });
+    Object.defineProperty(rail, "scrollLeft", { configurable: true, writable: true, value: 0 });
+    Object.defineProperty(rail, "scrollBy", { configurable: true, value: scrollBy });
+    Object.defineProperty(firstPlayCard, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        width: 232,
+        height: 184,
+        top: 0,
+        left: 0,
+        right: 232,
+        bottom: 184,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll plays right" }));
 
     expect(scrollBy).toHaveBeenCalledWith({ behavior: "smooth", left: 240 });
   });
